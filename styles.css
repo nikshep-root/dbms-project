@@ -1,0 +1,121 @@
+/* FoodBridge — Custom styles beyond Tailwind */
+
+/* Sidebar nav links */
+.nav-link {
+  color: rgba(148, 163, 184, 1);
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, .05);
+  color: #e2e8f0;
+}
+
+.nav-link.active {
+  background: rgba(16, 185, 129, .1);
+  color: #34d399;
+}
+
+.nav-link.active span:first-child {
+  background: rgba(16, 185, 129, .2) !important;
+}
+
+/* Category chips */
+.chip.selected {
+  background: #ecfdf5 !important;
+  border-color: #10b981 !important;
+  color: #047857 !important;
+  font-weight: 600;
+}
+
+/* Tab states */
+.tab {
+  color: #9ca3af;
+  border-color: transparent;
+}
+
+.tab:hover {
+  color: #374151;
+}
+
+.tab.active {
+  color: #059669;
+  border-color: #10b981;
+}
+
+.tab.active .tab-count {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+/* Toast visible */
+.toast-show {
+  transform: translateY(0) !important;
+  opacity: 1 !important;
+}
+
+/* Table row hover */
+#requestTable tbody tr,
+#listingsTable tbody tr {
+  transition: background .15s ease;
+}
+
+#requestTable tbody tr:hover,
+#listingsTable tbody tr:hover {
+  background: #f9fafb;
+}
+
+/* Expiry warning row */
+.row-expiry-warn {
+  background: #fffbeb !important;
+}
+
+.row-expiry-warn:hover {
+  background: #fef3c7 !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Step tracker connector */
+.step-connector {
+  position: absolute;
+  top: 16px;
+  left: calc(50% + 16px);
+  right: calc(-50% + 16px);
+  height: 3px;
+  background: #e5e7eb;
+  border-radius: 4px;
+}
+
+.step-connector.done {
+  background: #10b981;
+}
+
+.step-connector.active-line {
+  background: linear-gradient(90deg, #10b981, #e5e7eb);
+}
+
+/* Smooth page transitions */
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
