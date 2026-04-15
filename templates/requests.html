@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Waste Management System | Requests</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Sticky navigation -->
+    <nav class="navbar glass">
+        <div class="logo">🍃 FoodSaver</div>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('home') }}">Home</a></li>
+            <li><a href="{{ url_for('add_food') }}">Add Food</a></li>
+            <li><a class="active" href="{{ url_for('requests_dashboard') }}">Requests</a></li>
+            <li><a href="{{ url_for('audit_logs') }}">Audit Logs</a></li>
+        </ul>
+        <div class="nav-auth">
+            <span class="user-chip">{{ current_user.display_name }} ({{ current_user.role|capitalize }})</span>
+            <form method="POST" action="{{ url_for('logout') }}">
+                <button type="submit" class="btn tiny">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <main class="page-wrap fade-in">
+        <section class="hero compact glass slide-up">
+            <h1>Requests Dashboard</h1>
+            <p>Approve or reject NGO requests and update delivery progress.</p>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="flash-stack">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        <section class="metrics-grid slide-up delay-1">
+            <article class="metric-card glass-card">
+                <p class="metric-label">Available Food</p>
+                <h3>{{ metrics.available_food }}</h3>
+            </article>
+            <article class="metric-card glass-card">
+                <p class="metric-label">Pending Requests</p>
+                <h3>{{ metrics.pending_requests }}</h3>
+            </article>
+            <article class="metric-card glass-card">
+                <p class="metric-label">Approved Requests</p>
+                <h3>{{ metrics.approved_requests }}</h3>
+            </article>
+            <article class="metric-card glass-card">
+                <p class="metric-label">Delivered</p>
+                <h3>{{ metrics.delivered_count }}</h3>
+            </article>
+        </section>
+
+        <section class="filter-wrap glass-card slide-up delay-1">
+            <form method="GET" action="{{ url_for('requests_dashboard') }}" class="filter-form">
+                <div class="input-group">
+                    <label for="status">Status</label>
+                    <select id="status" name="status">
+                        <option value="All" {% if status_filter == 'All' %}selected{% endif %}>All</option>
+                        <option value="Pending" {% if status_filter == 'Pending' %}selected{% endif %}>Pending</option>
+                        <option value="Approved" {% if status_filter == 'Approved' %}selected{% endif %}>Approved</option>
+                        <option value="Rejected" {% if status_filter == 'Rejected' %}selected{% endif %}>Rejected</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="q">Search NGO or Food</label>
+                    <input id="q" name="q" type="text" value="{{ search_query }}" placeholder="e.g. care, rice, meal">
+                </div>
+                <div class="filter-actions">
+                    <button class="btn tiny" type="submit">Apply</button>
+                    <a class="btn tiny secondary" href="{{ url_for('requests_dashboard') }}">Reset</a>
+                    <a class="btn tiny secondary" href="{{ url_for('export_requests_csv', status=status_filter, q=search_query) }}">Export CSV</a>
+                </div>
+            </form>
+        </section>
+
+        <!-- Request records table -->
+        <section class="table-wrap glass-card slide-up delay-1">
+            <div class="table-meta">
+                <p>Showing page {{ page }} of {{ total_pages }} ({{ total_count }} records)</p>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>NGO</th>
+                            <th>Food</th>
+                            <th>Qty</th>
+                            <th>Requested At</th>
+                            <th>Status</th>
+                            <th>Delivery</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if requests %}
+                            {% for row in requests %}
+                                <tr>
+                                    <td>{{ row.ngo_name }}</td>
+                                    <td>{{ row.food_name }}</td>
+                                    <td>{{ row.quantity }}</td>
+                                    <td>{{ row.request_time.strftime('%d %b %Y, %I:%M %p') }}</td>
+                                    <td>
+                                        <span class="status {{ row.request_status | lower }}">{{ row.request_status }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="status delivery">{{ row.delivery_status }}</span>
+                                    </td>
+                                    <td>
+                                        <div class="action-stack">
+                                            {% if row.request_status == 'Pending' %}
+                                                <form method="POST" action="{{ url_for('update_request') }}" class="inline-form">
+                                                    <input type="hidden" name="request_id" value="{{ row.request_id }}">
+                                                    <input type="hidden" name="status" value="Approved">
+                                                    <button class="btn tiny" type="submit">Approve</button>
+                                                </form>
+                                                <form method="POST" action="{{ url_for('update_request') }}" class="inline-form">
+                                                    <input type="hidden" name="request_id" value="{{ row.request_id }}">
+                                                    <input type="hidden" name="status" value="Rejected">
+                                                    <button class="btn tiny danger" type="submit">Reject</button>
+                                                </form>
+                                            {% elif row.request_status == 'Approved' %}
+                                                <form method="POST" action="{{ url_for('update_delivery') }}" class="inline-form delivery-form">
+                                                    <input type="hidden" name="request_id" value="{{ row.request_id }}">
+                                                    <select name="delivery_status" required>
+                                                        <option value="Pending" {% if row.delivery_status == 'Pending' %}selected{% endif %}>Pending</option>
+                                                        <option value="In Transit" {% if row.delivery_status == 'In Transit' %}selected{% endif %}>In Transit</option>
+                                                        <option value="Delivered" {% if row.delivery_status == 'Delivered' %}selected{% endif %}>Delivered</option>
+                                                        <option value="Cancelled" {% if row.delivery_status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                                                    </select>
+                                                    <button class="btn tiny" type="submit">Update</button>
+                                                </form>
+                                            {% else %}
+                                                <span class="muted">No actions</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="muted">No requests found.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if total_pages > 1 %}
+                <div class="pagination">
+                    {% if page > 1 %}
+                        <a class="page-link" href="{{ url_for('requests_dashboard', page=page-1, status=status_filter, q=search_query) }}">Previous</a>
+                    {% endif %}
+
+                    {% for p in range(1, total_pages + 1) %}
+                        {% if p >= page - 2 and p <= page + 2 %}
+                            <a class="page-link {% if p == page %}active{% endif %}" href="{{ url_for('requests_dashboard', page=p, status=status_filter, q=search_query) }}">{{ p }}</a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page < total_pages %}
+                        <a class="page-link" href="{{ url_for('requests_dashboard', page=page+1, status=status_filter, q=search_query) }}">Next</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>

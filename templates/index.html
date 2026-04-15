@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Waste Management System | Home</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Sticky navigation -->
+    <nav class="navbar glass">
+        <div class="logo">🍃 FoodSaver</div>
+        <ul class="nav-links">
+            <li><a class="active" href="{{ url_for('home') }}">Home</a></li>
+            {% if current_user and current_user.role in ['admin', 'restaurant'] %}
+                <li><a href="{{ url_for('add_food') }}">Add Food</a></li>
+            {% endif %}
+            {% if current_user and current_user.role == 'admin' %}
+                <li><a href="{{ url_for('requests_dashboard') }}">Requests</a></li>
+                <li><a href="{{ url_for('audit_logs') }}">Audit Logs</a></li>
+            {% endif %}
+        </ul>
+        <div class="nav-auth">
+            {% if current_user %}
+                <span class="user-chip">{{ current_user.display_name }} ({{ current_user.role|capitalize }})</span>
+                <form method="POST" action="{{ url_for('logout') }}">
+                    <button type="submit" class="btn tiny">Logout</button>
+                </form>
+            {% else %}
+                <a class="btn tiny" href="{{ url_for('login') }}">Login</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <main class="page-wrap fade-in">
+        <section class="hero glass slide-up">
+            <h1>Reduce Waste, Feed More Lives</h1>
+            <p>Browse available surplus meals and request them instantly.</p>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="flash-stack">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Food card grid -->
+        <section class="grid cards-grid slide-up delay-1">
+            {% if foods %}
+                {% for food in foods %}
+                    <article class="food-card glass-card">
+                        <div class="card-head">
+                            <h3>{{ food.food_name }}</h3>
+                            <span class="pill">#{{ food.food_id }}</span>
+                        </div>
+                        <p><strong>Quantity:</strong> {{ food.quantity }}</p>
+                        <p><strong>Expiry:</strong> {{ food.expiry_time.strftime('%d %b %Y, %I:%M %p') }}</p>
+
+                        {% if current_user and current_user.role in ['admin', 'ngo'] %}
+                            <form class="request-form" method="POST" action="{{ url_for('request_food') }}">
+                                <input type="hidden" name="food_id" value="{{ food.food_id }}">
+                                {% if current_user.role == 'ngo' %}
+                                    <input type="hidden" name="ngo_id" value="{{ current_user.ngo_id }}">
+                                    <label>Request as NGO</label>
+                                    <input type="text" value="{{ current_user.display_name }}" disabled>
+                                {% else %}
+                                    <label for="ngo_id_{{ food.food_id }}">Request as NGO</label>
+                                    <select id="ngo_id_{{ food.food_id }}" name="ngo_id" required>
+                                        <option value="" selected disabled>Select NGO</option>
+                                        {% for ngo in ngos %}
+                                            <option value="{{ ngo.ngo_id }}">{{ ngo.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                {% endif %}
+                                <button type="submit" class="btn ripple-btn">Request Food</button>
+                            </form>
+                        {% else %}
+                            <p class="muted">Only NGO and Admin users can request food.</p>
+                        {% endif %}
+                    </article>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state glass-card">
+                    <h3>No food listings available right now</h3>
+                    <p>Ask restaurants to add new surplus food items.</p>
+                </div>
+            {% endif %}
+        </section>
+    </main>
+
+    <script>
+        // Lightweight UI effects for interactions
+        document.querySelectorAll('.ripple-btn').forEach((button) => {
+            button.addEventListener('mouseenter', () => button.classList.add('hovered'));
+            button.addEventListener('mouseleave', () => button.classList.remove('hovered'));
+        });
+
+        setTimeout(() => {
+            document.querySelectorAll('.flash').forEach((el) => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(-6px)';
+            });
+        }, 2800);
+    </script>
+</body>
+</html>

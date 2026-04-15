@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Waste Management System | Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page-wrap centered-layout fade-in">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="flash-stack form-flash">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        <section class="form-card glass-card slide-up auth-card role-login-shell">
+            <header class="role-login-head">
+                <h1>Choose Your Portal</h1>
+                <p>Login with your role-specific workspace for faster access.</p>
+            </header>
+
+            <section class="role-login-grid">
+                <article class="role-login-card role-ngo">
+                    <div class="role-chip">NGO Portal</div>
+                    <h2>For NGO Teams</h2>
+                    <p>Request available meals and track approvals.</p>
+
+                    <form method="POST" action="{{ url_for('login') }}" class="modern-form">
+                        <div class="input-group">
+                            <label for="ngo_username">NGO Username</label>
+                            <input id="ngo_username" name="username" type="text" required placeholder="carehands">
+                        </div>
+
+                        <div class="input-group">
+                            <label for="ngo_password">Password</label>
+                            <input id="ngo_password" name="password" type="password" required placeholder="ngo123">
+                        </div>
+
+                        <button class="btn" type="submit">Login as NGO</button>
+                    </form>
+                </article>
+
+                <article class="role-login-card role-provider">
+                    <div class="role-chip">Food Provider Portal</div>
+                    <h2>For Restaurants</h2>
+                    <p>Add surplus food and manage inventory updates.</p>
+
+                    <form method="POST" action="{{ url_for('login') }}" class="modern-form">
+                        <div class="input-group">
+                            <label for="provider_username">Provider Username</label>
+                            <input id="provider_username" name="username" type="text" required placeholder="freshbites">
+                        </div>
+
+                        <div class="input-group">
+                            <label for="provider_password">Password</label>
+                            <input id="provider_password" name="password" type="password" required placeholder="rest123">
+                        </div>
+
+                        <button class="btn" type="submit">Login as Provider</button>
+                    </form>
+                </article>
+            </section>
+
+            <div class="demo-hint role-demo-hint">
+                <p><strong>Admin access:</strong> admin / admin123</p>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

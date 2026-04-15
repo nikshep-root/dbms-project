@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Waste Management System | Audit Logs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="navbar glass">
+        <div class="logo">🍃 FoodSaver</div>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('home') }}">Home</a></li>
+            <li><a href="{{ url_for('add_food') }}">Add Food</a></li>
+            <li><a href="{{ url_for('requests_dashboard') }}">Requests</a></li>
+            <li><a class="active" href="{{ url_for('audit_logs') }}">Audit Logs</a></li>
+        </ul>
+        <div class="nav-auth">
+            <span class="user-chip">{{ current_user.display_name }} ({{ current_user.role|capitalize }})</span>
+            <form method="POST" action="{{ url_for('logout') }}">
+                <button type="submit" class="btn tiny">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <main class="page-wrap fade-in">
+        <section class="hero compact glass slide-up">
+            <h1>Audit Logs</h1>
+            <p>Track administrative actions for approvals, rejections, and delivery updates.</p>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <section class="flash-stack">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </section>
+            {% endif %}
+        {% endwith %}
+
+        <section class="filter-wrap glass-card slide-up delay-1">
+            <form method="GET" action="{{ url_for('audit_logs') }}" class="audit-filter-form">
+                <div class="input-group">
+                    <label for="action">Action</label>
+                    <select id="action" name="action">
+                        <option value="All" {% if action_filter == 'ALL' %}selected{% endif %}>All</option>
+                        <option value="REQUEST_APPROVED" {% if action_filter == 'REQUEST_APPROVED' %}selected{% endif %}>Request Approved</option>
+                        <option value="REQUEST_REJECTED" {% if action_filter == 'REQUEST_REJECTED' %}selected{% endif %}>Request Rejected</option>
+                        <option value="DELIVERY_UPDATED" {% if action_filter == 'DELIVERY_UPDATED' %}selected{% endif %}>Delivery Updated</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label for="admin">Admin Username</label>
+                    <input id="admin" name="admin" type="text" value="{{ admin_search }}" placeholder="admin">
+                </div>
+
+                <div class="input-group">
+                    <label for="start">Start Date</label>
+                    <input id="start" name="start" type="date" value="{{ start_date }}">
+                </div>
+
+                <div class="input-group">
+                    <label for="end">End Date</label>
+                    <input id="end" name="end" type="date" value="{{ end_date }}">
+                </div>
+
+                <div class="filter-actions">
+                    <button class="btn tiny" type="submit">Apply</button>
+                    <a class="btn tiny secondary" href="{{ url_for('audit_logs') }}">Reset</a>
+                </div>
+            </form>
+        </section>
+
+        <section class="table-wrap glass-card slide-up delay-1">
+            <div class="table-meta">
+                <p>Showing page {{ page }} of {{ total_pages }} ({{ total_count }} logs)</p>
+            </div>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Admin</th>
+                            <th>Action</th>
+                            <th>Request ID</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if logs %}
+                            {% for log in logs %}
+                                <tr>
+                                    <td>{{ log.created_at.strftime('%d %b %Y, %I:%M %p') }}</td>
+                                    <td>{{ log.admin_username }}</td>
+                                    <td><span class="status delivery">{{ log.action_type.replace('_', ' ') }}</span></td>
+                                    <td>{{ log.request_id if log.request_id else '-' }}</td>
+                                    <td>{{ log.details if log.details else '-' }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="muted">No audit logs found for selected filters.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if total_pages > 1 %}
+                <div class="pagination">
+                    {% if page > 1 %}
+                        <a class="page-link" href="{{ url_for('audit_logs', page=page-1, action=action_filter, admin=admin_search, start=start_date, end=end_date) }}">Previous</a>
+                    {% endif %}
+
+                    {% for p in range(1, total_pages + 1) %}
+                        {% if p >= page - 2 and p <= page + 2 %}
+                            <a class="page-link {% if p == page %}active{% endif %}" href="{{ url_for('audit_logs', page=p, action=action_filter, admin=admin_search, start=start_date, end=end_date) }}">{{ p }}</a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if page < total_pages %}
+                        <a class="page-link" href="{{ url_for('audit_logs', page=page+1, action=action_filter, admin=admin_search, start=start_date, end=end_date) }}">Next</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>
