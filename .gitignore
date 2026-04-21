@@ -1,4 +1,11 @@
+<<<<<<< HEAD
 __pycache__/
 *.pyc
 .venv/
 .env
+=======
+node_modules/
+.env
+.DS_Store
+*.log
+>>>>>>> 284a54173f9c0054cf80171612c70b9694e22881
