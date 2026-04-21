@@ -458,6 +458,18 @@
                             class="w-9 h-9 rounded-lg bg-slate-800 group-[.active]:bg-brand-500 group-[.active]:shadow-lg group-[.active]:shadow-brand-500/30 flex items-center justify-center text-base transition-colors duration-300">🔍</span>
                         <span class="text-slate-300 group-[.active]:text-white">Browse Food</span>
                     </a>
+                    <a href="#" data-page="request-mgmt"
+                        class="nav-link group flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-300 hover:bg-slate-800">
+                        <span
+                            class="w-9 h-9 rounded-lg bg-slate-800 group-[.active]:bg-warning-500 group-[.active]:shadow-lg group-[.active]:shadow-amber-500/30 flex items-center justify-center text-base transition-colors duration-300">📝</span>
+                        <span class="text-slate-300 group-[.active]:text-white">My Requests</span>
+                    </a>
+                    <a href="#" data-page="delivery-tracker"
+                        class="nav-link group flex items-center gap-4 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-300 hover:bg-slate-800">
+                        <span
+                            class="w-9 h-9 rounded-lg bg-slate-800 group-[.active]:bg-blue-500 group-[.active]:shadow-lg group-[.active]:shadow-blue-500/30 flex items-center justify-center text-base transition-colors duration-300">🚚</span>
+                        <span class="text-slate-300 group-[.active]:text-white">My Deliveries</span>
+                    </a>
                 </div>
 
                 <div data-role-section="admin" class="hidden">
@@ -527,12 +539,24 @@
                     <div class="flex items-center gap-3">
                         <span id="topbarRole"
                             class="hidden sm:inline-flex px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full bg-brand-50 text-brand-700">Restaurant</span>
-                        <button
-                            class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition relative">
-                            🔔<span
-                                class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">3</span>
-                        </button>
-                        <div
+                        <div class="relative">
+                            <button id="notifBtn"
+                                class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition relative"
+                                aria-label="Notifications" aria-expanded="false">
+                                🔔
+                                <span id="notifBadge"
+                                    class="hidden absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">0</span>
+                            </button>
+                            <div id="notifPanel"
+                                class="hidden absolute right-0 mt-2 w-[320px] max-h-[420px] overflow-hidden bg-white border border-gray-100 rounded-2xl shadow-2xl z-50">
+                                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/70">
+                                    <p class="text-sm font-bold text-gray-800">Notifications</p>
+                                    <button id="notifMarkAll" class="text-[11px] font-semibold text-brand-600 hover:text-brand-700 transition">Mark all read</button>
+                                </div>
+                                <div id="notifList" class="max-h-[360px] overflow-y-auto"></div>
+                            </div>
+                        </div>
+                        <div id="topbarUserInitials"
                             class="w-9 h-9 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-xs">
                             RK</div>
                     </div>
@@ -833,7 +857,7 @@
                                     <th
                                         class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 px-6 py-4">
                                         Request ID</th>
-                                    <th
+                                    <th id="requestCounterpartyHeading"
                                         class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 px-6 py-4">
                                         NGO Name</th>
                                     <th
@@ -848,7 +872,7 @@
                                     <th
                                         class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 px-6 py-4">
                                         Status</th>
-                                    <th
+                                    <th id="requestActionsHeading"
                                         class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 px-6 py-4">
                                         Actions</th>
                                 </tr>

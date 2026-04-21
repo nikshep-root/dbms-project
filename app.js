@@ -5,9 +5,13 @@
 /** @typedef {'pending'|'approved'|'rejected'} RequestStatus */
 /** @typedef {'pending'|'in-transit'|'delivered'} DeliveryStep */
 
+/** @param {string} status @returns {string} */
+const normalizeStatus = (status) => String(status || '').toLowerCase().replace(/\s+/g, '-');
+
 // ─── Badge helper ───
 /** @param {string} status @returns {string} */
 const badge = (status) => {
+  const normalized = normalizeStatus(status);
   const map = {
     available: 'bg-emerald-50 text-emerald-700',
     approved: 'bg-emerald-50 text-emerald-700',
@@ -18,7 +22,8 @@ const badge = (status) => {
     expired: 'bg-red-50 text-red-700',
     rejected: 'bg-red-50 text-red-700',
   };
-  return `<span class="inline-flex px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide rounded-full ${map[status] || 'bg-gray-100 text-gray-500'}">${status.replace('-', ' ')}</span>`;
+  const label = normalized.replace(/-/g, ' ');
+  return `<span class="inline-flex px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide rounded-full ${map[normalized] || 'bg-gray-100 text-gray-500'}">${label}</span>`;
 };
 
 // ─── Sample Data ───
@@ -63,6 +68,42 @@ document.addEventListener('DOMContentLoaded', () => {
   const $ = (/** @type {string} */ s) => document.getElementById(s);
   const sidebar = $('sidebar'), overlay = $('sidebarOverlay');
 
+  function getStoredUser() {
+    try {
+      return JSON.parse(localStorage.getItem('foodbridge_user') || '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  function getInitials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'FB';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  function updateIdentityUI(name) {
+    const safeName = String(name || '').trim();
+    const subtitle = $('pageSubtitle');
+    const sidebarName = $('sidebarUserName');
+    const initials = $('topbarUserInitials');
+    const welcomeTitle = $('dashWelcomeTitle');
+
+    if (safeName && subtitle) subtitle.textContent = `Welcome back, ${safeName}`;
+    if (safeName && sidebarName) sidebarName.textContent = safeName;
+    if (initials) initials.textContent = getInitials(safeName);
+    if (safeName && welcomeTitle) welcomeTitle.textContent = `Welcome Back, ${safeName}`;
+  }
+
+  function setStoredUserName(name) {
+    const safeName = String(name || '').trim();
+    if (!safeName) return;
+    const user = getStoredUser();
+    user.name = safeName;
+    localStorage.setItem('foodbridge_user', JSON.stringify(user));
+  }
+
   // Sidebar toggle
   $('hamburger')?.addEventListener('click', () => { sidebar?.classList.add('max-md:translate-x-0'); sidebar?.classList.remove('max-md:-translate-x-full'); overlay?.classList.remove('hidden'); });
   const closeSB = () => { sidebar?.classList.remove('max-md:translate-x-0'); sidebar?.classList.add('max-md:-translate-x-full'); overlay?.classList.add('hidden'); };
@@ -72,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Navigation ───
   const titles = { dashboard: 'Dashboard', 'add-listing': 'Add Food Listing', 'food-listings': 'My Listings', 'browse-food': 'Browse Food', 'request-mgmt': 'Request Management', 'delivery-tracker': 'Delivery Tracker' };
   const subtitles = { dashboard: "Welcome back, Raj's Kitchen", 'add-listing': 'Post surplus food for NGOs', 'food-listings': 'Manage your active listings', 'browse-food': 'Find and request available food', 'request-mgmt': 'Review & approve food requests', 'delivery-tracker': 'Track all active deliveries' };
-  const roles = { dashboard: ['Restaurant', 'bg-brand-50 text-brand-700'], 'add-listing': ['Restaurant', 'bg-brand-50 text-brand-700'], 'food-listings': ['Restaurant', 'bg-brand-50 text-brand-700'], 'browse-food': ['NGO', 'bg-blue-50 text-blue-700'], 'request-mgmt': ['Admin', 'bg-amber-50 text-amber-700'], 'delivery-tracker': ['Tracking', 'bg-purple-50 text-purple-700'] };
+  const roles = { dashboard: ['Restaurant', 'bg-brand-50 text-brand-700'], 'add-listing': ['Restaurant', 'bg-brand-50 text-brand-700'], 'food-listings': ['Restaurant', 'bg-brand-50 text-brand-700'], 'browse-food': ['NGO', 'bg-blue-50 text-blue-700'], 'request-mgmt': ['Requests', 'bg-amber-50 text-amber-700'], 'delivery-tracker': ['Deliveries', 'bg-purple-50 text-purple-700'] };
 
   /** @param {string} id */
   function navigateTo(id) {
@@ -81,15 +122,34 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.page').forEach(p => { p.classList.remove('active'); p.classList.add('hidden'); });
     const pg = $(`page-${id}`);
     if (pg) { pg.classList.remove('hidden'); pg.classList.add('active'); }
+    const currentUser = getStoredUser();
+    const currentRole = currentUser?.role;
+    const roleAwareSubtitle = (id === 'request-mgmt' && currentRole === 'ngo')
+      ? 'Track your food requests in real time'
+      : (id === 'delivery-tracker' && currentRole === 'ngo')
+        ? 'Monitor deliveries assigned to your NGO'
+        : (id === 'dashboard' && currentUser?.name)
+          ? `Welcome back, ${currentUser.name}`
+        : (subtitles[id] || '');
     $('pageTitle').textContent = titles[id] || 'Dashboard';
-    $('pageSubtitle').textContent = subtitles[id] || '';
+    $('pageSubtitle').textContent = roleAwareSubtitle;
     const [rLabel, rClass] = roles[id] || roles.dashboard;
+    const resolvedLabel = ['request-mgmt', 'delivery-tracker'].includes(id)
+      ? (currentRole === 'ngo' ? 'NGO' : 'Restaurant')
+      : rLabel;
     const tr = $('topbarRole');
-    if (tr) { tr.textContent = rLabel; tr.className = `hidden sm:inline-flex px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full ${rClass}`; }
+    if (tr) { tr.textContent = resolvedLabel; tr.className = `hidden sm:inline-flex px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full ${rClass}`; }
     closeSB();
-    if (id === 'dashboard') animateCounters();
+    if (id === 'dashboard') {
+      animateCounters();
+      startDashboardRealtime();
+    } else {
+      stopDashboardRealtime();
+    }
     if (id === 'browse-food') renderFoodCards();
     if (id === 'food-listings') renderListings();
+    if (id === 'request-mgmt') renderRequests(document.querySelector('.tab.active')?.dataset.tab || 'all');
+    if (id === 'delivery-tracker') renderDeliveries();
   }
 
   document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', e => { e.preventDefault(); navigateTo(l.dataset.page); }));
@@ -106,6 +166,305 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   animateCounters();
 
+  const notifBtn = $('notifBtn');
+  const notifBadge = $('notifBadge');
+  const notifPanel = $('notifPanel');
+  const notifList = $('notifList');
+  const notifMarkAll = $('notifMarkAll');
+  let notificationPoller = null;
+  let dashboardPoller = null;
+  let latestNotifications = [];
+
+  function getNotifStorageKey(role) {
+    return `foodbridge_notif_seen_${String(role || '').toLowerCase()}`;
+  }
+
+  function getSeenNotifications(role) {
+    try {
+      const raw = localStorage.getItem(getNotifStorageKey(role));
+      const ids = raw ? JSON.parse(raw) : [];
+      return new Set(Array.isArray(ids) ? ids : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function setSeenNotifications(role, idsSet) {
+    localStorage.setItem(getNotifStorageKey(role), JSON.stringify(Array.from(idsSet)));
+  }
+
+  function formatRelativeTime(dateInput) {
+    if (!dateInput) return 'Just now';
+    const d = new Date(dateInput);
+    const diffMs = Date.now() - d.getTime();
+    if (Number.isNaN(diffMs) || diffMs < 0) return 'Just now';
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  }
+
+  function renderNotifications() {
+    const role = JSON.parse(localStorage.getItem('foodbridge_user') || '{}')?.role;
+    const seen = getSeenNotifications(role);
+    const unreadCount = latestNotifications.filter(n => !seen.has(n.id)).length;
+
+    if (notifBadge) {
+      if (unreadCount > 0) {
+        notifBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+        notifBadge.classList.remove('hidden');
+      } else {
+        notifBadge.classList.add('hidden');
+      }
+    }
+
+    if (!notifList) return;
+    if (latestNotifications.length === 0) {
+      notifList.innerHTML = '<div class="px-4 py-10 text-center text-sm text-gray-400 font-medium">No new notifications</div>';
+      return;
+    }
+
+    notifList.innerHTML = latestNotifications.map(n => {
+      const unread = !seen.has(n.id);
+      return `<button data-notif-id="${n.id}" data-goto="${n.goto}" class="notif-item w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition ${unread ? 'bg-brand-50/50' : ''}">
+        <div class="flex items-start justify-between gap-2">
+          <p class="text-sm font-semibold text-gray-800">${n.title}</p>
+          ${unread ? '<span class="w-2 h-2 mt-1 rounded-full bg-brand-500"></span>' : ''}
+        </div>
+        <p class="text-xs text-gray-500 mt-1">${n.message}</p>
+        <p class="text-[11px] text-gray-400 mt-1">${formatRelativeTime(n.time)}</p>
+      </button>`;
+    }).join('');
+  }
+
+  async function loadNotifications() {
+    const token = localStorage.getItem('foodbridge_token');
+    const role = JSON.parse(localStorage.getItem('foodbridge_user') || '{}')?.role;
+    if (!token || !['restaurant', 'ngo'].includes(role)) {
+      latestNotifications = [];
+      renderNotifications();
+      return;
+    }
+
+    try {
+      const [reqRes, delRes] = await Promise.all([
+        fetch('/api/requests/me', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/deliveries/me', { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+
+      const reqData = reqRes.ok ? await reqRes.json() : { requests: [] };
+      const delData = delRes.ok ? await delRes.json() : { deliveries: [] };
+      const reqRows = Array.isArray(reqData.requests) ? reqData.requests : [];
+      const delRows = Array.isArray(delData.deliveries) ? delData.deliveries : [];
+
+      const items = [];
+
+      reqRows.forEach(r => {
+        const st = normalizeStatus(r.status);
+        if (role === 'restaurant' && st === 'pending') {
+          items.push({
+            id: `req-${r.request_id}-${st}`,
+            title: 'New Food Request',
+            message: `${r.ngo_name || 'An NGO'} requested ${r.food_name}`,
+            time: r.request_time,
+            goto: 'request-mgmt'
+          });
+        }
+        if (role === 'ngo' && ['approved', 'rejected'].includes(st)) {
+          items.push({
+            id: `req-${r.request_id}-${st}`,
+            title: st === 'approved' ? 'Request Approved' : 'Request Rejected',
+            message: `${r.food_name} request was ${st}`,
+            time: r.request_time,
+            goto: 'request-mgmt'
+          });
+        }
+      });
+
+      delRows.forEach(d => {
+        const st = normalizeStatus(d.delivery_status);
+        if (['in-transit', 'delivered'].includes(st)) {
+          items.push({
+            id: `delivery-${d.delivery_id}-${st}`,
+            title: st === 'delivered' ? 'Delivery Completed' : 'Delivery In Transit',
+            message: `${d.food_name} (${d.quantity}) is ${st.replace('-', ' ')}`,
+            time: d.delivery_time || d.request_time,
+            goto: 'delivery-tracker'
+          });
+        }
+      });
+
+      latestNotifications = items
+        .sort((a, b) => new Date(b.time || 0).getTime() - new Date(a.time || 0).getTime())
+        .slice(0, 20);
+      renderNotifications();
+    } catch (err) {
+      console.error('Notification load failed', err);
+    }
+  }
+
+  function startNotificationPolling() {
+    if (notificationPoller) clearInterval(notificationPoller);
+    loadNotifications();
+    notificationPoller = setInterval(loadNotifications, 60000);
+  }
+
+  async function renderDashboardWorkflowActivity(role, token) {
+    const feed = $('dashboardActivityFeed');
+    if (!feed || !token) return;
+
+    try {
+      const requestsPromise = fetch('/api/requests/me', { headers: { 'Authorization': `Bearer ${token}` } });
+      const deliveriesPromise = fetch('/api/deliveries/me', { headers: { 'Authorization': `Bearer ${token}` } });
+      const listingsPromise = role === 'restaurant'
+        ? fetch('/api/food-listings/me', { headers: { 'Authorization': `Bearer ${token}` } })
+        : Promise.resolve(null);
+
+      const [requestsRes, deliveriesRes, listingsRes] = await Promise.all([requestsPromise, deliveriesPromise, listingsPromise]);
+      const requestsData = requestsRes && requestsRes.ok ? await requestsRes.json() : { requests: [] };
+      const deliveriesData = deliveriesRes && deliveriesRes.ok ? await deliveriesRes.json() : { deliveries: [] };
+      const listingsData = listingsRes && listingsRes.ok ? await listingsRes.json() : { listings: [] };
+
+      const reqRows = Array.isArray(requestsData.requests) ? requestsData.requests : [];
+      const delRows = Array.isArray(deliveriesData.deliveries) ? deliveriesData.deliveries : [];
+      const listingRows = Array.isArray(listingsData.listings) ? listingsData.listings : [];
+      const activities = [];
+
+      reqRows.forEach(r => {
+        const status = normalizeStatus(r.status);
+        const who = role === 'restaurant' ? (r.ngo_name || 'An NGO') : (r.restaurant_name || 'A restaurant');
+        const requestMsg = status === 'approved'
+          ? `${r.food_name} request was approved`
+          : status === 'rejected'
+            ? `${r.food_name} request was rejected`
+            : `${who} requested ${r.food_name}`;
+        activities.push({
+          icon: '🤝',
+          tint: 'from-amber-50 to-amber-100/50 text-amber-500',
+          message: requestMsg,
+          time: r.request_time,
+          order: new Date(r.request_time).getTime()
+        });
+      });
+
+      delRows.forEach(d => {
+        const status = normalizeStatus(d.delivery_status);
+        const target = role === 'restaurant' ? (d.ngo_name || 'NGO') : (d.restaurant_name || 'Restaurant');
+        const delivered = status === 'delivered';
+        activities.push({
+          icon: delivered ? '✅' : '🚚',
+          tint: delivered ? 'from-emerald-50 to-emerald-100/50 text-emerald-500' : 'from-blue-50 to-blue-100/50 text-blue-500',
+          message: delivered ? `${d.food_name} delivered to ${target}` : `${d.food_name} is ${status.replace('-', ' ')} to ${target}`,
+          time: d.delivery_time || d.request_time,
+          order: new Date(d.delivery_time || d.request_time).getTime()
+        });
+      });
+
+      if (role === 'restaurant') {
+        listingRows.forEach(l => {
+          activities.push({
+            icon: '🍱',
+            tint: 'from-brand-50 to-brand-100/50 text-brand-500',
+            message: `${l.food_name} (${l.quantity}) listed`,
+            time: l.created_at,
+            order: new Date(l.created_at).getTime()
+          });
+        });
+      }
+
+      activities.sort((a, b) => b.order - a.order);
+      const latest = activities.slice(0, 6);
+
+      if (latest.length === 0) {
+        feed.innerHTML = '<div class="text-sm text-gray-400 font-medium py-6">No workflow activity yet. New actions will appear here automatically.</div>';
+        return;
+      }
+
+      feed.innerHTML = latest.map((a, i) => `
+        <div class="flex items-start gap-6 animate-slide-right min-h-[60px] group" style="animation-delay:${0.05 + (i * 0.05)}s">
+          <div class="w-12 h-12 rounded-2xl bg-gradient-to-br ${a.tint} flex items-center justify-center text-xl shadow-inner border border-white group-hover:scale-110 transition-transform duration-300">${a.icon}</div>
+          <div class="flex-1 min-w-0 pt-1">
+            <p class="text-base text-gray-800 leading-snug">${a.message}</p>
+            <p class="text-sm text-gray-400 mt-1 font-medium">${formatRelativeTime(a.time)}</p>
+          </div>
+        </div>
+      `).join('');
+    } catch (e) {
+      feed.innerHTML = '<div class="text-sm text-red-400 font-medium py-6">Unable to load real-time workflow right now.</div>';
+    }
+  }
+
+  function stopDashboardRealtime() {
+    if (dashboardPoller) {
+      clearInterval(dashboardPoller);
+      dashboardPoller = null;
+    }
+  }
+
+  function startDashboardRealtime() {
+    stopDashboardRealtime();
+    const user = JSON.parse(localStorage.getItem('foodbridge_user') || '{}');
+    if (!user?.role) return;
+    setupRoleBasedUI(user.role);
+    dashboardPoller = setInterval(() => {
+      const isDashboardOpen = document.getElementById('page-dashboard')?.classList.contains('active');
+      if (!isDashboardOpen) {
+        stopDashboardRealtime();
+        return;
+      }
+      const currentUser = JSON.parse(localStorage.getItem('foodbridge_user') || '{}');
+      if (currentUser?.role) setupRoleBasedUI(currentUser.role);
+    }, 45000);
+  }
+
+  notifBtn?.addEventListener('click', () => {
+    if (!notifPanel) return;
+    const opening = notifPanel.classList.contains('hidden');
+    notifPanel.classList.toggle('hidden');
+    notifBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    if (opening) loadNotifications();
+  });
+
+  notifMarkAll?.addEventListener('click', () => {
+    const role = JSON.parse(localStorage.getItem('foodbridge_user') || '{}')?.role;
+    if (!role) return;
+    const seen = getSeenNotifications(role);
+    latestNotifications.forEach(n => seen.add(n.id));
+    setSeenNotifications(role, seen);
+    renderNotifications();
+  });
+
+  notifList?.addEventListener('click', (e) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const item = target.closest('.notif-item');
+    if (!item) return;
+    const role = JSON.parse(localStorage.getItem('foodbridge_user') || '{}')?.role;
+    const seen = getSeenNotifications(role);
+    const notifId = item.dataset.notifId;
+    if (notifId) {
+      seen.add(notifId);
+      setSeenNotifications(role, seen);
+    }
+    const goto = item.dataset.goto;
+    if (goto) navigateTo(goto);
+    if (notifPanel) notifPanel.classList.add('hidden');
+    renderNotifications();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!notifPanel || !notifBtn) return;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    if (!notifPanel.classList.contains('hidden') && !notifPanel.contains(target) && !notifBtn.contains(target)) {
+      notifPanel.classList.add('hidden');
+      notifBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
   // ─── Render Browse Food Cards ───
   async function renderFoodCards() {
     const grid = $('foodGrid'); if (!grid) return;
@@ -113,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!token) return;
 
     try {
-      const res = await fetch('http://localhost:3000/api/food/available', {
+      const res = await fetch('/api/food/available', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) return;
@@ -164,12 +523,12 @@ document.addEventListener('DOMContentLoaded', () => {
         b.className = 'px-4 py-2.5 rounded-xl bg-gray-200 text-gray-500 text-xs font-bold cursor-not-allowed';
 
         try {
-          const r = await fetch('http://localhost:3000/api/requests', {
+          const r = await fetch('/api/requests', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             body: JSON.stringify({ food_id: foodId })
           });
-          if (r.ok) { showToast('🎊 Food strictly claimed and requested!'); renderFoodCards(); }
+          if (r.ok) { showToast('🎊 Food strictly claimed and requested!'); renderFoodCards(); loadNotifications(); }
           else showToast('⚠️ Already requested or failed.');
         } catch (e) { showToast('Network Error'); }
       }));
@@ -177,32 +536,111 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ─── Render Request Table ───
-  function renderRequests(filter = 'all') {
+  async function renderRequests(filter = 'all') {
     const body = $('requestBody'); if (!body) return;
-    body.innerHTML = requests.filter(r => filter === 'all' || r.status === filter).map(r => {
-      const isPending = r.status === 'pending';
-      return `<tr class="border-b border-gray-50 transition-colors hover:bg-gray-50/50" data-status="${r.status}">
-        <td class="px-6 py-4 text-sm font-mono font-semibold text-gray-800">${r.id}</td>
-        <td class="px-6 py-4 text-sm font-semibold text-gray-700">${r.ngo}</td>
-        <td class="px-6 py-4 text-sm text-gray-600">${r.food}</td>
-        <td class="px-6 py-4 text-sm text-gray-500">${r.qty}</td>
-        <td class="px-6 py-4 text-sm text-gray-400">${r.time}</td>
-        <td class="px-6 py-4">${badge(r.status)}</td>
+    const counterpartyHeading = $('requestCounterpartyHeading');
+    const actionsHeading = $('requestActionsHeading');
+    const token = localStorage.getItem('foodbridge_token');
+    const role = JSON.parse(localStorage.getItem('foodbridge_user') || '{}')?.role;
+    if (!token || !['restaurant', 'ngo'].includes(role)) {
+      body.innerHTML = '<tr><td colspan="7" class="px-6 py-10 text-center text-gray-400 font-medium">Please log in to view requests.</td></tr>';
+      return;
+    }
+
+    if (counterpartyHeading) {
+      counterpartyHeading.textContent = role === 'ngo' ? 'Restaurant Name' : 'NGO Name';
+    }
+    if (actionsHeading) {
+      actionsHeading.textContent = role === 'ngo' ? 'Notes' : 'Actions';
+    }
+
+    let reqRows = [];
+    try {
+      const res = await fetch('/api/requests/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        body.innerHTML = '<tr><td colspan="7" class="px-6 py-10 text-center text-red-400 font-medium">Unable to load requests.</td></tr>';
+        return;
+      }
+      const data = await res.json();
+      reqRows = Array.isArray(data.requests) ? data.requests : [];
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="7" class="px-6 py-10 text-center text-red-400 font-medium">Network error while loading requests.</td></tr>';
+      return;
+    }
+
+    const counts = {
+      all: reqRows.length,
+      pending: reqRows.filter(r => normalizeStatus(r.status) === 'pending').length,
+      approved: reqRows.filter(r => normalizeStatus(r.status) === 'approved').length,
+      rejected: reqRows.filter(r => normalizeStatus(r.status) === 'rejected').length,
+    };
+
+    const tabBtns = Array.from(document.querySelectorAll('#requestTabs .tab'));
+    tabBtns.forEach(btn => {
+      const tab = btn.dataset.tab || 'all';
+      const countEl = btn.querySelector('.tab-count');
+      if (countEl) countEl.textContent = String(counts[tab] || 0);
+    });
+
+    const filtered = reqRows.filter(r => {
+      const s = normalizeStatus(r.status);
+      return filter === 'all' || s === filter;
+    });
+
+    if (filtered.length === 0) {
+      body.innerHTML = '<tr><td colspan="7" class="px-6 py-10 text-center text-gray-400 font-medium">No requests found for this filter.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = filtered.map(r => {
+      const normalized = normalizeStatus(r.status);
+      const isPending = normalized === 'pending' && role === 'restaurant';
+      const dt = new Date(r.request_time).toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', day: 'numeric', month: 'short' });
+      const counterparty = role === 'ngo' ? r.restaurant_name : r.ngo_name;
+      return `<tr class="border-b border-gray-50 transition-colors hover:bg-gray-50/50" data-status="${normalized}">
+        <td class="px-6 py-4 text-sm font-mono font-semibold text-gray-800">#REQ-${r.request_id}</td>
+        <td class="px-6 py-4 text-sm font-semibold text-gray-700">${counterparty || '—'}</td>
+        <td class="px-6 py-4 text-sm text-gray-600">${r.food_name}</td>
+        <td class="px-6 py-4 text-sm text-gray-500">${r.quantity}</td>
+        <td class="px-6 py-4 text-sm text-gray-400">${dt}</td>
+        <td class="px-6 py-4">${badge(normalized)}</td>
         <td class="px-6 py-4">${isPending
-          ? `<div class="flex gap-2"><button class="approve-btn px-3 py-1.5 rounded-lg bg-brand-500 text-white text-xs font-bold hover:bg-brand-600 active:scale-95 transition-all" data-id="${r.id}">Approve</button><button class="reject-btn px-3 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-100 text-xs font-bold hover:bg-red-100 active:scale-95 transition-all" data-id="${r.id}">Reject</button></div>`
-          : `<span class="text-xs text-gray-400 font-medium">${r.status === 'approved' ? '✓ Done' : '— Closed'}</span>`
+          ? `<div class="flex gap-2"><button class="approve-btn px-3 py-1.5 rounded-lg bg-brand-500 text-white text-xs font-bold hover:bg-brand-600 active:scale-95 transition-all" data-id="${r.request_id}">Approve</button><button class="reject-btn px-3 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-100 text-xs font-bold hover:bg-red-100 active:scale-95 transition-all" data-id="${r.request_id}">Reject</button></div>`
+          : `<span class="text-xs text-gray-400 font-medium">${role === 'ngo' ? 'Read only' : normalized === 'approved' ? '✓ Approved' : '— Closed'}</span>`
         }</td></tr>`;
     }).join('');
 
-    body.querySelectorAll('.approve-btn').forEach(b => b.addEventListener('click', () => {
-      const req = requests.find(r => r.id === b.dataset.id); if (req) req.status = 'approved';
-      renderRequests(document.querySelector('.tab.active')?.dataset.tab || 'all');
-      showToast('Request approved');
+    if (role === 'ngo') {
+      return;
+    }
+
+    const applyDecision = async (requestId, action) => {
+      try {
+        const resp = await fetch(`/api/requests/${requestId}/decision`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          showToast(err.error || 'Failed to update request');
+          return;
+        }
+        showToast(action === 'approve' ? 'Request approved' : 'Request rejected');
+        await renderRequests(document.querySelector('.tab.active')?.dataset.tab || 'all');
+        loadNotifications();
+      } catch (err) {
+        showToast('Network error while updating request');
+      }
+    };
+
+    body.querySelectorAll('.approve-btn').forEach(btn => btn.addEventListener('click', () => {
+      applyDecision(btn.dataset.id, 'approve');
     }));
-    body.querySelectorAll('.reject-btn').forEach(b => b.addEventListener('click', () => {
-      const req = requests.find(r => r.id === b.dataset.id); if (req) req.status = 'rejected';
-      renderRequests(document.querySelector('.tab.active')?.dataset.tab || 'all');
-      showToast('Request rejected');
+    body.querySelectorAll('.reject-btn').forEach(btn => btn.addEventListener('click', () => {
+      applyDecision(btn.dataset.id, 'reject');
     }));
   }
   renderRequests();
@@ -216,34 +654,132 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ─── Render Delivery Cards ───
-  function renderDeliveries() {
+  async function renderDeliveries() {
     const grid = $('deliveryGrid'); if (!grid) return;
+    const token = localStorage.getItem('foodbridge_token');
+    const role = JSON.parse(localStorage.getItem('foodbridge_user') || '{}')?.role;
+    if (!token) return;
+
+    let deliveryRows = [];
+    try {
+      const res = await fetch('/api/deliveries/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        grid.innerHTML = '<div class="col-span-full py-12 text-center text-red-400 font-medium">Unable to load deliveries.</div>';
+        return;
+      }
+      const data = await res.json();
+      deliveryRows = Array.isArray(data.deliveries) ? data.deliveries : [];
+    } catch (e) {
+      grid.innerHTML = '<div class="col-span-full py-12 text-center text-red-400 font-medium">Network error while loading deliveries.</div>';
+      return;
+    }
+
+    if (deliveryRows.length === 0) {
+      grid.innerHTML = '<div class="col-span-full py-12 text-center text-gray-400 font-medium">No deliveries yet.</div>';
+      return;
+    }
+
     const stepLabels = ['Pending', 'In Transit', 'Delivered'];
-    grid.innerHTML = deliveries.map((d, i) => {
-      return `<div class="bg-white rounded-2xl border border-gray-100 p-6 animate-slide-up" style="animation-delay:${i * 80}ms">
+    const buildSteps = (statusRaw, requestTime, deliveryTime) => {
+      const status = normalizeStatus(statusRaw);
+      const reqT = requestTime ? new Date(requestTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
+      const delT = deliveryTime ? new Date(deliveryTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
+      if (status === 'delivered') {
+        return [{ s: 'completed', t: reqT }, { s: 'completed', t: delT }, { s: 'completed', t: delT }];
+      }
+      if (status === 'in-transit') {
+        return [{ s: 'completed', t: reqT }, { s: 'active', t: delT !== '—' ? delT : 'Active' }, { s: '', t: '—' }];
+      }
+      return [{ s: 'active', t: reqT }, { s: '', t: '—' }, { s: '', t: '—' }];
+    };
+
+    grid.innerHTML = deliveryRows.map((d, i) => {
+      const status = normalizeStatus(d.delivery_status);
+      const steps = buildSteps(status, d.request_time, d.delivery_time);
+      const counterparty = role === 'ngo' ? d.restaurant_name : d.ngo_name;
+      const title = `${d.food_name} — ${d.quantity}`;
+      const agentName = d.delivery_agent || 'Not assigned yet';
+      const agentPhone = d.agent_phone || 'Not assigned yet';
+      const agentDetails = `<div class="mt-4 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-600 space-y-1"><p class="font-semibold">Delivery Agent Details</p><p>👤 ${agentName}</p><p>📞 ${agentPhone}</p></div>`;
+      const agentEditor = role === 'restaurant'
+        ? `<div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input class="delivery-agent-input w-full px-3 py-2 rounded-lg border border-gray-200 text-xs" type="text" placeholder="Agent name" value="${d.delivery_agent || ''}">
+            <input class="delivery-phone-input w-full px-3 py-2 rounded-lg border border-gray-200 text-xs" type="text" placeholder="Agent phone" value="${d.agent_phone || ''}">
+          </div>`
+        : '';
+      const actionButtons = role === 'restaurant'
+        ? `<div class="mt-5 flex gap-2">
+            <button class="delivery-action px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition" data-id="${d.delivery_id}" data-status="In Transit">Mark In Transit</button>
+            <button class="delivery-action px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition" data-id="${d.delivery_id}" data-status="Delivered">Mark Delivered</button>
+          </div>`
+        : '';
+
+      return `<div class="delivery-card bg-white rounded-2xl border border-gray-100 p-6 animate-slide-up" style="animation-delay:${i * 80}ms">
         <div class="flex items-start justify-between mb-8">
           <div>
-            <h4 class="font-bold text-gray-900">${d.food}</h4>
-            <p class="text-sm text-gray-400 mt-1">🏢 ${d.ngo}</p>
+            <h4 class="font-bold text-gray-900">${title}</h4>
+            <p class="text-sm text-gray-400 mt-1">🏢 ${counterparty || '—'}</p>
           </div>
-          ${badge(d.status)}
+          ${badge(status)}
         </div>
         <div class="flex items-start">
-          ${d.steps.map((st, si) => {
-        const isLast = si === 2;
-        const dotColor = st.s === 'completed' ? 'bg-brand-500 ring-brand-100' : 'bg-gray-300 ring-gray-100';
-        const activeDot = st.s === 'active' ? 'bg-blue-500 ring-blue-100 ring-[6px]' : dotColor + ' ring-4';
-        const lineColor = st.s === 'completed' ? 'done' : st.s === 'active' ? 'active-line' : '';
-        return `<div class="flex-1 flex flex-col items-center relative">
+          ${steps.map((st, si) => {
+            const isLast = si === 2;
+            const dotColor = st.s === 'completed' ? 'bg-brand-500 ring-brand-100' : 'bg-gray-300 ring-gray-100';
+            const activeDot = st.s === 'active' ? 'bg-blue-500 ring-blue-100 ring-[6px]' : `${dotColor} ring-4`;
+            const lineColor = st.s === 'completed' ? 'done' : st.s === 'active' ? 'active-line' : '';
+            return `<div class="flex-1 flex flex-col items-center relative">
               <div class="w-4 h-4 rounded-full ${activeDot} z-10"></div>
               ${!isLast ? `<div class="step-connector ${lineColor}"></div>` : ''}
               <p class="text-xs font-semibold mt-3 ${st.s === 'completed' ? 'text-brand-600' : st.s === 'active' ? 'text-blue-600' : 'text-gray-400'}">${stepLabels[si]}</p>
               <p class="text-[10px] text-gray-400 mt-0.5">${st.t}</p>
             </div>`;
-      }).join('')}
+          }).join('')}
         </div>
+        ${agentDetails}
+        ${agentEditor}
+        ${actionButtons}
       </div>`;
     }).join('');
+
+    if (role === 'restaurant') {
+      grid.querySelectorAll('.delivery-action').forEach(btn => btn.addEventListener('click', async () => {
+        try {
+          const card = btn.closest('.delivery-card');
+          const agentInput = card ? card.querySelector('.delivery-agent-input') : null;
+          const phoneInput = card ? card.querySelector('.delivery-phone-input') : null;
+          const agentName = agentInput ? agentInput.value.trim() : '';
+          const agentPhone = phoneInput ? phoneInput.value.trim() : '';
+
+          if (btn.dataset.status === 'In Transit' && (!agentName || !agentPhone)) {
+            showToast('Add delivery agent name and phone first');
+            return;
+          }
+
+          const resp = await fetch(`/api/deliveries/${btn.dataset.id}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+              status: btn.dataset.status,
+              delivery_agent: agentName,
+              agent_phone: agentPhone
+            })
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Failed to update delivery');
+            return;
+          }
+          showToast(`Delivery marked ${btn.dataset.status}`);
+          renderDeliveries();
+          loadNotifications();
+        } catch (err) {
+          showToast('Network error while updating delivery');
+        }
+      }));
+    }
   }
   renderDeliveries();
 
@@ -254,7 +790,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!token) return;
 
     try {
-      const res = await fetch('http://localhost:3000/api/food-listings/me', {
+      const res = await fetch('/api/food-listings/me', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) return;
@@ -307,7 +843,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const payload = {
       food_name: foodName,
       quantity: foodQty,
-      expiry_time: foodExpiry ? new Date(foodExpiry).toISOString().slice(0, 19).replace('T', ' ') : null,
+      expiry_time: toMySqlDateTime(foodExpiry),
       category
     };
 
@@ -319,7 +855,7 @@ document.addEventListener('DOMContentLoaded', () => {
     submitBtn.disabled = true;
 
     try {
-      const res = await fetch('http://localhost:3000/api/food-listings', {
+      const res = await fetch('/api/food-listings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload)
@@ -364,9 +900,31 @@ document.addEventListener('DOMContentLoaded', () => {
     if (t && m) { m.textContent = msg; t.classList.add('toast-show'); setTimeout(() => t.classList.remove('toast-show'), 2800); }
   }
 
+  /** @param {number} n */
+  function pad2(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  // Keep datetime values in local time to avoid UTC shifts when saving/reloading expiry.
+  /** @param {Date} d */
+  function toLocalDateTimeInputValue(d) {
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  // Convert a datetime-local string to MySQL DATETIME format without timezone conversion.
+  /** @param {string} localDateTime */
+  function toMySqlDateTime(localDateTime) {
+    if (!localDateTime) return null;
+    return `${localDateTime.replace('T', ' ')}:00`;
+  }
+
   // Set default expiry
   const exp = /** @type {HTMLInputElement} */ ($('foodExpiry'));
-  if (exp) { const d = new Date(); d.setHours(d.getHours() + 4); exp.value = d.toISOString().slice(0, 16); }
+  if (exp) {
+    const d = new Date();
+    d.setHours(d.getHours() + 4);
+    exp.value = toLocalDateTimeInputValue(d);
+  }
 
   // ─── LANDING PAGE LOGIC ───
 
@@ -430,9 +988,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabLogin = $('tabLogin');
   const tabRegister = $('tabRegister');
 
+  const setAuthRole = (role) => {
+    authRole = role;
+    document.querySelectorAll('.auth-role-btn').forEach(b => {
+      // @ts-ignore
+      if (b.dataset.role === role) {
+        b.classList.add('bg-white', 'shadow', 'text-gray-900');
+        b.classList.remove('text-gray-500');
+      } else {
+        b.classList.remove('bg-white', 'shadow', 'text-gray-900');
+        b.classList.add('text-gray-500');
+      }
+    });
+  };
+
   // Open Auth Modal
   const openAuthModal = () => {
     if (authModal && authModalInner) {
+      // Always start from a predictable role selection when auth modal opens.
+      setAuthRole('restaurant');
       authModal.classList.remove('hidden');
       // small delay for transition
       setTimeout(() => {
@@ -485,15 +1059,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.auth-role-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
-      document.querySelectorAll('.auth-role-btn').forEach(b => {
-        b.classList.remove('bg-white', 'shadow', 'text-gray-900');
-        b.classList.add('text-gray-500');
-      });
       // @ts-ignore
-      btn.classList.add('bg-white', 'shadow', 'text-gray-900');
-      btn.classList.remove('text-gray-500');
-      // @ts-ignore
-      authRole = btn.dataset.role;
+      setAuthRole(btn.dataset.role);
     });
   });
 
@@ -524,7 +1091,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
 
-      const res = await fetch(`http://localhost:3000${endpoint}`, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -542,9 +1109,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
       showToast(`🎉 ${data.message || 'Success!'}`);
 
-      if (data.token) {
+      if (data.token && data.user) {
         localStorage.setItem('foodbridge_token', data.token);
         localStorage.setItem('foodbridge_user', JSON.stringify(data.user));
+      } else {
+        showToast('⚠️ Auth token missing. Please log in again.');
+        switchTab('login');
+        // @ts-ignore
+        $('authPassword').value = '';
+        // @ts-ignore
+        authSubmitBtn.textContent = 'Log In';
+        authSubmitBtn.disabled = false;
+        return;
       }
 
       closeAuthModal();
@@ -563,16 +1139,12 @@ document.addEventListener('DOMContentLoaded', () => {
           app.style.opacity = '0';
           app.style.animation = 'fadeIn 0.6s ease-out forwards';
 
-          if (data.user) {
-            // @ts-ignore
-            $('topbarRole').textContent = data.user.role;
-            // @ts-ignore
-            $('pageSubtitle').textContent = `Welcome back, ${data.user.name}`;
-            // @ts-ignore
-            $('sidebarUserName').textContent = data.user.name;
+          // @ts-ignore
+          $('topbarRole').textContent = data.user.role;
+          updateIdentityUI(data.user.name);
 
-            setupRoleBasedUI(data.user.role);
-          }
+          setupRoleBasedUI(data.user.role);
+          startNotificationPolling();
 
           animateCounters();
           loadProfile();
@@ -597,6 +1169,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── LOGOUT ───
   $('logoutBtn')?.addEventListener('click', () => {
+    if (notificationPoller) clearInterval(notificationPoller);
+    stopDashboardRealtime();
     localStorage.removeItem('foodbridge_token');
     localStorage.removeItem('foodbridge_user');
     location.reload();
@@ -608,14 +1182,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!token) return;
 
     try {
-      const res = await fetch('http://localhost:3000/api/profile', {
+      const res = await fetch('/api/profile', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // Clear stale/invalid auth state so role-specific UI doesn't get stuck on wrong user.
+        localStorage.removeItem('foodbridge_token');
+        localStorage.removeItem('foodbridge_user');
+        showToast('⚠️ Session expired. Please log in again.');
+        return;
+      }
       const data = await res.json();
 
       const { profile, history } = data;
       if (profile) {
+        setStoredUserName(profile.name);
+        updateIdentityUI(profile.name);
         // @ts-ignore
         $('profName').textContent = profile.name;
         // @ts-ignore
@@ -626,10 +1208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('profLocation').textContent = profile.location;
         // @ts-ignore
         $('profContact').textContent = profile.contact;
-        // @ts-ignore
-        const sbName = $('sidebarUserName'); if (sbName) sbName.textContent = profile.name;
-
-        const userRole = JSON.parse(localStorage.getItem('foodbridge_user'))?.role || 'User';
+        const userRole = getStoredUser()?.role || 'User';
         setupRoleBasedUI(userRole);
       }
 
@@ -672,7 +1251,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update Sidebar links
     document.querySelectorAll('[data-role-section]').forEach(el => {
-      if (el.dataset.roleSection === role || el.dataset.roleSection === 'all') {
+      const sectionRole = el.dataset.roleSection;
+      const canAccess = sectionRole === role || sectionRole === 'all' || (role === 'restaurant' && sectionRole === 'admin');
+      if (canAccess) {
         el.classList.remove('hidden');
       } else {
         el.classList.add('hidden');
@@ -692,7 +1273,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fetch Real Stats from Backend
         let stats = { active_listings: 0, deliveries_today: 0, meals_saved: 0, expiring_soon: 0 };
         try {
-          const res = await fetch('http://localhost:3000/api/dashboard/stats/restaurant', {
+          const res = await fetch('/api/dashboard/stats/restaurant', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) stats = await res.json();
@@ -741,7 +1322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fetch Real Stats from Backend
         let stats = { pending_requests: 0, in_transit: 0, meals_received: 0, partner_restaurants: 0 };
         try {
-          const res = await fetch('http://localhost:3000/api/dashboard/stats/ngo', {
+          const res = await fetch('/api/dashboard/stats/ngo', {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (res.ok) stats = await res.json();
@@ -782,6 +1363,8 @@ document.addEventListener('DOMContentLoaded', () => {
               `;
       }
 
+      await renderDashboardWorkflowActivity(role, token);
+
       // Need to re-bind the goto buttons since we just injected HTML
       document.querySelectorAll('.goto-btn,[data-goto]').forEach(b => {
         b.replaceWith(b.cloneNode(true));
@@ -797,7 +1380,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (localStorage.getItem('foodbridge_token')) {
+    updateIdentityUI(getStoredUser()?.name);
     loadProfile();
+    startNotificationPolling();
+    startDashboardRealtime();
   }
 
 });

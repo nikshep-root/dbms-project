@@ -1,112 +1,107 @@
-# Food Waste Management System
+# FoodBridge DBMS Project
 
-A full-stack DBMS mini project using Flask, MySQL, and Jinja2 templates.
+A full-stack DBMS mini project using Node.js, Express, MySQL, and a modern HTML/CSS/JS UI.
 
 ## Features
 
-- Restaurants can add surplus food listings.
-- NGOs can browse available food and submit requests.
-- Admin can approve/reject requests.
-- Delivery status can be tracked for approved requests.
-- Role-based login for Admin, Restaurant, and NGO users.
-- Duplicate active request prevention for same NGO + food item.
-- Auto-expiry sync for stale food listings.
-- Database indexes added for faster joins and lookups.
-- Admin requests dashboard with filters, search, pagination, and CSV export.
-- Audit log tracking for admin approvals/rejections/delivery updates.
-- Modern premium UI with glassmorphism, gradients, and responsive cards.
+- Role-based authentication for Restaurant and NGO users.
+- Restaurant can post food listings.
+- NGO can browse available listings and request food.
+- Profile and activity history APIs.
+- Dashboard stats APIs for each role.
+- JWT-protected API routes.
+- Responsive premium landing page and dashboard UI.
+- Vercel-ready API routing via `api/index.js`.
 
-## Folder Structure
+## Tech Stack
+
+- Backend: Node.js + Express
+- Database: MySQL
+- Frontend: HTML + Tailwind + Vanilla JavaScript
+- Auth: JWT + bcrypt
+
+## Project Structure
 
 ```text
 food-waste-project/
-|-- app.py
-|-- db.py
-|-- .env.example
-|-- schema.sql
-|-- templates/
-|   |-- index.html
-|   |-- add_food.html
-|   |-- requests.html
-|   |-- login.html
-|   |-- audit_logs.html
-|-- static/
-|   |-- style.css
+|-- api/
+|   |-- index.js
+|-- images/
+|-- app.js
+|-- index.html
+|-- styles.css
+|-- server.js
+|-- database.sql
+|-- seed.js
+|-- fix_passwords.js
+|-- package.json
+|-- vercel.json
 |-- README.md
 ```
 
 ## Prerequisites
 
-- Python 3.9+
+- Node.js 18+
 - MySQL Server
 
-## Setup (Step by Step)
+## Setup
 
-1. Create a virtual environment and activate it:
+1. Install dependencies:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+npm install
 ```
 
-2. Install dependencies:
+2. Create a `.env` file in the project root:
 
-```powershell
-pip install flask mysql-connector-python
-```
-
-3. Create database and tables:
-
-```powershell
-Get-Content .\schema.sql | mysql -u root -p
-```
-
-4. Configure environment variables:
-
-```powershell
-Copy .env.example to .env and update values:
+```env
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_password
-DB_NAME=food_waste_db
-SECRET_KEY=change-this-secret
+DB_NAME=foodbridge
+JWT_SECRET=change-this-secret
+PORT=3000
 ```
 
-5. Run the Flask app:
+3. Create database, tables, and sample data:
 
 ```powershell
-python app.py
+node seed.js
+```
+
+4. Hash sample passwords for login:
+
+```powershell
+node fix_passwords.js
+```
+
+5. Start the app:
+
+```powershell
+node server.js
 ```
 
 6. Open in browser:
 
 ```text
-http://127.0.0.1:5000
+http://localhost:3000
 ```
 
-## Routes
+## Main API Routes
 
-- `GET /login` -> open login page
-- `POST /login` -> authenticate user
-- `POST /logout` -> logout current user
-- `GET /` -> show all available food
-- `GET /add_food` -> open add food form
-- `POST /add_food` -> add food item
-- `POST /request_food` -> NGO requests food
-- `GET /requests` -> show requests dashboard
-- `GET /export_requests_csv` -> export filtered request list as CSV
-- `GET /audit_logs` -> view filtered admin audit logs
-- `POST /update_request` -> approve/reject request
-- `POST /update_delivery` -> update delivery status
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/profile`
+- `GET /api/dashboard/stats/restaurant`
+- `GET /api/dashboard/stats/ngo`
+- `POST /api/food-listings`
+- `GET /api/food-listings/me`
+- `GET /api/food/available`
+- `POST /api/requests`
 
 ## Notes
 
-- Validation is included for required fields, positive quantity, valid IDs, and future expiry time.
-- SQL uses foreign keys and enum statuses for data integrity.
-- Default demo users from `schema.sql`:
-	- `admin / admin123`
-	- `freshbites / rest123`
-	- `carehands / ngo123`
-- Re-run schema safely after updates:
-	- `Get-Content .\schema.sql | mysql -u root -p`
+- The canonical database schema is `database.sql`.
+- Frontend app calls backend at `http://localhost:3000`.
+- For Vercel deployments, API requests are routed through `api/index.js` using `vercel.json`.
