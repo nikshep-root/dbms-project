@@ -14,6 +14,13 @@ app.use(express.static(__dirname)); // Serve static files like index.html and im
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_foodbridge_key_2026';
 
+console.log('Environment variables loaded:');
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('DB_USER:', process.env.DB_USER);
+console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'NOT SET');
+console.log('DB_NAME:', process.env.DB_NAME);
+console.log('DB_PORT:', process.env.DB_PORT);
+
 // Create MySQL connection pool
 const pool = mysql.createPool({
     host: process.env.DB_HOST || 'localhost',
@@ -21,7 +28,7 @@ const pool = mysql.createPool({
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'foodbridge',
     port: process.env.DB_PORT || 3306,
-    ssl: process.env.DB_HOST ? { rejectUnauthorized: true } : false,
+    ssl: false, // Disable SSL for localhost connections
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
@@ -77,6 +84,7 @@ app.post('/api/auth/register', async (req, res) => {
 // LOGIN
 app.post('/api/auth/login', async (req, res) => {
     const { role, email, password } = req.body;
+    console.log('Login attempt:', { role, email, password: '***' });
 
     try {
         if (!['restaurant', 'ngo'].includes(role)) {
@@ -84,14 +92,18 @@ app.post('/api/auth/login', async (req, res) => {
         }
 
         const table = role === 'restaurant' ? 'Restaurant' : 'NGO';
+        console.log('Querying table:', table, 'for email:', email);
         const [rows] = await pool.query(`SELECT * FROM ${table} WHERE email = ?`, [email]);
+        console.log('Query result rows:', rows.length);
 
         if (rows.length === 0) {
             return res.status(400).json({ error: 'Invalid email or password.' });
         }
 
         const user = rows[0];
+        console.log('User found:', user.email);
         const validPassword = await bcrypt.compare(password, user.password);
+        console.log('Password valid:', validPassword);
 
         if (!validPassword) {
             return res.status(400).json({ error: 'Invalid email or password.' });
@@ -107,7 +119,7 @@ app.post('/api/auth/login', async (req, res) => {
         res.json({ message: 'Login successful', token, user: { name: user.name, role } });
 
     } catch (error) {
-        console.error(error);
+        console.error('Login error:', error);
         res.status(500).json({ error: 'Database error during login.' });
     }
 });
