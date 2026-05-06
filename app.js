@@ -800,7 +800,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const res = await fetch('/api/food-listings/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        cache: 'no-store'
       });
       if (!res.ok) return;
       const { listings } = await res.json();
@@ -876,6 +877,10 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.reset();
         document.querySelectorAll('#categoryChips .chip').forEach(c => c.classList.remove('selected'));
         document.querySelector('#categoryChips .chip[data-value="cooked"]')?.classList.add('selected');
+        
+        setTimeout(() => {
+          navigateTo('food-listings');
+        }, 1000);
       } else {
         showToast('⚠️ Failed to post listing. Check backend.');
       }

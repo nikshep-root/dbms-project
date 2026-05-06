@@ -198,9 +198,9 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
             profileDetails = users[0];
 
             // Get Listing History
-            const [listings] = await pool.query('SELECT food_type, quantity, status, created_at FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 10', [id]);
+            const [listings] = await pool.query('SELECT food_name, quantity, status, created_at FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 10', [id]);
             history = listings.map(l => ({
-                action: `Listed ${l.food_type} (${l.quantity} qty)`,
+                action: `Listed ${l.food_name} (${l.quantity} qty)`,
                 status: l.status,
                 time: l.created_at
             }));
@@ -212,13 +212,13 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 
             // Get Request History
             const [requests] = await pool.query(`
-                SELECT r.status, r.created_at, f.food_type 
+                SELECT r.status, r.request_time AS created_at, f.food_name 
                 FROM Request r 
-                JOIN Food_Listing f ON r.listing_id = f.listing_id 
-                WHERE r.ngo_id = ? ORDER BY r.created_at DESC LIMIT 10
+                JOIN Food_Listing f ON r.food_id = f.food_id 
+                WHERE r.ngo_id = ? ORDER BY r.request_time DESC LIMIT 10
             `, [id]);
             history = requests.map(r => ({
-                action: `Requested ${r.food_type}`,
+                action: `Requested ${r.food_name}`,
                 status: r.status,
                 time: r.created_at
             }));
@@ -330,9 +330,9 @@ app.get('/api/dashboard/stats/ngo', authenticateToken, async (req, res) => {
 // Create Food Listing (Restaurant)
 app.post('/api/food-listings', authenticateToken, async (req, res) => {
     if (req.user.role !== 'restaurant') return res.status(403).json({ error: 'Unauthorized' });
-    const { food_name, quantity, expiry_time } = req.body;
+    const { food_name, quantity, expiry_time, category } = req.body;
     try {
-        await pool.query(`INSERT INTO Food_Listing (restaurant_id, food_name, quantity, expiry_time, status) VALUES (?, ?, ?, ?, 'Available')`, [req.user.id, food_name, quantity, expiry_time || null]);
+        await pool.query(`INSERT INTO Food_Listing (restaurant_id, food_name, quantity, expiry_time, status, category) VALUES (?, ?, ?, ?, 'Available', ?)`, [req.user.id, food_name, quantity, expiry_time || null, category || null]);
         res.json({ message: 'Listing created successfully!' });
     } catch (err) {
         console.error(err);
