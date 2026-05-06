@@ -29,9 +29,9 @@ const pool = mysql.createPool({
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'foodbridge',
     port: process.env.DB_PORT || 3306,
-    ssl: process.env.DB_HOST && process.env.DB_HOST !== 'localhost' 
-        ? { rejectUnauthorized: false } 
-        : false, // Enable SSL for cloud DBs (like Aiven), disable for localhost
+    ssl: process.env.DB_HOST && process.env.DB_HOST !== 'localhost'
+        ? { rejectUnauthorized: false }
+        : false,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
@@ -81,33 +81,8 @@ app.post('/api/auth/register', async (req, res) => {
         const query = `INSERT INTO ${table} (name, location, contact, email, password) VALUES (?, ?, ?, ?, ?)`;
         const [result] = await pool.query(query, [name.trim(), location.trim(), contact.trim(), email.trim(), hashedPassword]);
 
-        // Backward compatibility: if legacy App_User exists, mirror new user there too.
-        const [appUserTable] = await pool.query("SHOW TABLES LIKE 'App_User'");
-        if (appUserTable.length > 0) {
-            const legacyPasswordHash = crypto.createHash('sha256').update(password).digest('hex');
-            const legacyUsername = `${role}_${result.insertId}`;
-
-            if (role === 'restaurant') {
-                await pool.query(
-                    `
-                    INSERT INTO App_User (username, password_hash, role, restaurant_id, ngo_id, is_active)
-                    VALUES (?, ?, 'restaurant', ?, NULL, 1)
-                    `,
-                    [legacyUsername, legacyPasswordHash, result.insertId]
-                );
-            } else {
-                await pool.query(
-                    `
-                    INSERT INTO App_User (username, password_hash, role, restaurant_id, ngo_id, is_active)
-                    VALUES (?, ?, 'ngo', NULL, ?, 1)
-                    `,
-                    [legacyUsername, legacyPasswordHash, result.insertId]
-                );
-            }
-        }
-
         const token = jwt.sign(
-            { id: role === 'restaurant' ? result.insertId : result.insertId, role, name: name.trim() },
+            { id: result.insertId, role, name: name.trim() },
             JWT_SECRET,
             { expiresIn: '2h' }
         );
@@ -162,7 +137,6 @@ app.post('/api/auth/login', async (req, res) => {
         const resolvedRole = matched.role;
         const user = matched.user;
 
-        // Generate JWT using DB-resolved role to keep UI and permissions consistent.
         const token = jwt.sign(
             { id: resolvedRole === 'restaurant' ? user.restaurant_id : user.ngo_id, role: resolvedRole, name: user.name },
             JWT_SECRET,
@@ -183,7 +157,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 /* ====================================
-   DASHBOARD ROUTES 
+   DASHBOARD ROUTES
 ==================================== */
 
 // PROFILE & HISTORY ROUTE
@@ -193,41 +167,39 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
         let profileDetails, history;
 
         if (role === 'restaurant') {
-            // Get Restaurant Profile
             const [users] = await pool.query('SELECT name, email, location, contact FROM Restaurant WHERE restaurant_id = ?', [id]);
             profileDetails = users[0];
 
-            // Get Listing History
-            const [listings] = await pool.query('SELECT food_name, quantity, status, created_at FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 10', [id]);
+            // Get Listing History — uses real columns: listing_id, food_type, created_at
+            const [listings] = await pool.query(
+                'SELECT food_type, quantity, status, created_at FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 10',
+                [id]
+            );
             history = listings.map(l => ({
-                action: `Listed ${l.food_name} (${l.quantity} qty)`,
+                action: `Listed ${l.food_type} (${l.quantity} qty)`,
                 status: l.status,
                 time: l.created_at
             }));
 
         } else {
-            // Get NGO Profile
             const [users] = await pool.query('SELECT name, email, location, contact FROM NGO WHERE ngo_id = ?', [id]);
             profileDetails = users[0];
 
-            // Get Request History
+            // Get Request History — uses real columns: listing_id FK, food_type
             const [requests] = await pool.query(`
-                SELECT r.status, r.request_time AS created_at, f.food_name 
-                FROM Request r 
-                JOIN Food_Listing f ON r.food_id = f.food_id 
-                WHERE r.ngo_id = ? ORDER BY r.request_time DESC LIMIT 10
+                SELECT r.status, r.created_at, f.food_type
+                FROM Request r
+                JOIN Food_Listing f ON r.listing_id = f.listing_id
+                WHERE r.ngo_id = ? ORDER BY r.created_at DESC LIMIT 10
             `, [id]);
             history = requests.map(r => ({
-                action: `Requested ${r.food_name}`,
+                action: `Requested ${r.food_type}`,
                 status: r.status,
                 time: r.created_at
             }));
         }
 
-        res.json({
-            profile: profileDetails,
-            history: history
-        });
+        res.json({ profile: profileDetails, history: history });
 
     } catch (error) {
         console.error(error);
@@ -283,10 +255,22 @@ app.get('/api/dashboard/stats/restaurant', authenticateToken, async (req, res) =
     try {
         const restId = req.user.id;
 
-        const [[{ active_count }]] = await pool.query(`SELECT COUNT(*) as active_count FROM Food_Listing WHERE restaurant_id = ? AND status = 'Available'`, [restId]);
-        const [[{ deliveries_today }]] = await pool.query(`SELECT COUNT(*) as deliveries_today FROM Delivery d JOIN Request r ON d.request_id = r.request_id JOIN Food_Listing f ON r.food_id = f.food_id WHERE f.restaurant_id = ? AND d.delivery_time IS NOT NULL AND DATE(d.delivery_time) = CURDATE()`, [restId]);
-        const [[{ meals_saved }]] = await pool.query(`SELECT COALESCE(SUM(CAST(SUBSTRING_INDEX(f.quantity, ' ', 1) AS DECIMAL(10,2))), 0) as meals_saved FROM Food_Listing f JOIN Request r ON f.food_id = r.food_id JOIN Delivery d ON d.request_id = r.request_id WHERE f.restaurant_id = ? AND d.delivery_status = 'Delivered'`, [restId]);
-        const [[{ expiring_soon }]] = await pool.query(`SELECT COUNT(*) as expiring_soon FROM Food_Listing WHERE restaurant_id = ? AND status = 'Available' AND expiry_time <= DATE_ADD(NOW(), INTERVAL 2 HOUR)`, [restId]);
+        const [[{ active_count }]] = await pool.query(
+            `SELECT COUNT(*) as active_count FROM Food_Listing WHERE restaurant_id = ? AND status = 'available'`,
+            [restId]
+        );
+        const [[{ deliveries_today }]] = await pool.query(
+            `SELECT COUNT(*) as deliveries_today FROM Delivery d JOIN Request r ON d.request_id = r.request_id JOIN Food_Listing f ON r.listing_id = f.listing_id WHERE f.restaurant_id = ? AND DATE(d.created_at) = CURDATE()`,
+            [restId]
+        );
+        const [[{ meals_saved }]] = await pool.query(
+            `SELECT COALESCE(SUM(f.quantity), 0) as meals_saved FROM Food_Listing f JOIN Request r ON f.listing_id = r.listing_id JOIN Delivery d ON d.request_id = r.request_id WHERE f.restaurant_id = ? AND d.status = 'delivered'`,
+            [restId]
+        );
+        const [[{ expiring_soon }]] = await pool.query(
+            `SELECT COUNT(*) as expiring_soon FROM Food_Listing WHERE restaurant_id = ? AND status = 'available' AND pickup_by <= DATE_ADD(NOW(), INTERVAL 2 HOUR)`,
+            [restId]
+        );
 
         res.json({
             active_listings: active_count,
@@ -306,10 +290,22 @@ app.get('/api/dashboard/stats/ngo', authenticateToken, async (req, res) => {
     try {
         const ngoId = req.user.id;
 
-        const [[{ pending_count }]] = await pool.query(`SELECT COUNT(*) as pending_count FROM Request WHERE ngo_id = ? AND status = 'Pending'`, [ngoId]);
-        const [[{ in_transit }]] = await pool.query(`SELECT COUNT(*) as in_transit FROM Request r JOIN Delivery d ON r.request_id = d.request_id WHERE r.ngo_id = ? AND d.delivery_status = 'In Transit'`, [ngoId]);
-        const [[{ meals_received }]] = await pool.query(`SELECT COALESCE(SUM(CAST(SUBSTRING_INDEX(f.quantity, ' ', 1) AS DECIMAL(10,2))), 0) as meals_received FROM Request r JOIN Food_Listing f ON r.food_id = f.food_id JOIN Delivery d ON d.request_id = r.request_id WHERE r.ngo_id = ? AND d.delivery_status = 'Delivered'`, [ngoId]);
-        const [[{ partners }]] = await pool.query(`SELECT COUNT(DISTINCT f.restaurant_id) as partners FROM Request r JOIN Food_Listing f ON r.food_id = f.food_id WHERE r.ngo_id = ? AND r.status IN ('Approved')`, [ngoId]);
+        const [[{ pending_count }]] = await pool.query(
+            `SELECT COUNT(*) as pending_count FROM Request WHERE ngo_id = ? AND status = 'pending'`,
+            [ngoId]
+        );
+        const [[{ in_transit }]] = await pool.query(
+            `SELECT COUNT(*) as in_transit FROM Request r JOIN Delivery d ON r.request_id = d.request_id WHERE r.ngo_id = ? AND d.status = 'in transit'`,
+            [ngoId]
+        );
+        const [[{ meals_received }]] = await pool.query(
+            `SELECT COALESCE(SUM(f.quantity), 0) as meals_received FROM Request r JOIN Food_Listing f ON r.listing_id = f.listing_id JOIN Delivery d ON d.request_id = r.request_id WHERE r.ngo_id = ? AND d.status = 'delivered'`,
+            [ngoId]
+        );
+        const [[{ partners }]] = await pool.query(
+            `SELECT COUNT(DISTINCT f.restaurant_id) as partners FROM Request r JOIN Food_Listing f ON r.listing_id = f.listing_id WHERE r.ngo_id = ? AND r.status = 'approved'`,
+            [ngoId]
+        );
 
         res.json({
             pending_requests: pending_count,
@@ -324,27 +320,31 @@ app.get('/api/dashboard/stats/ngo', authenticateToken, async (req, res) => {
 });
 
 /* ====================================
-   FOOD & REQUEST ROUTES 
+   FOOD & REQUEST ROUTES
 ==================================== */
 
 // Create Food Listing (Restaurant)
+// Real columns: listing_id (PK), restaurant_id, food_type, quantity (INT), status, pickup_by, created_at
 app.post('/api/food-listings', authenticateToken, async (req, res) => {
     if (req.user.role !== 'restaurant') return res.status(403).json({ error: 'Unauthorized' });
-    const { food_name, quantity, expiry_time, category } = req.body;
+    const { food_name, quantity, expiry_time } = req.body;
 
-    if (!food_name || !food_name.trim()) return res.status(400).json({ error: 'Food name is required.' });
-    if (!quantity || !quantity.trim()) return res.status(400).json({ error: 'Quantity is required.' });
-    if (!expiry_time) return res.status(400).json({ error: 'Pickup deadline (expiry time) is required.' });
+    if (!food_name || !String(food_name).trim()) return res.status(400).json({ error: 'Food name is required.' });
+    if (!quantity) return res.status(400).json({ error: 'Quantity is required.' });
+    if (!expiry_time) return res.status(400).json({ error: 'Pickup deadline is required.' });
+
+    // quantity from frontend is like "10 kg" — extract numeric part for INT column
+    const qtyNumeric = parseInt(String(quantity).trim(), 10) || 1;
 
     try {
         await pool.query(
-            `INSERT INTO Food_Listing (restaurant_id, food_name, quantity, expiry_time, status, category) VALUES (?, ?, ?, ?, 'Available', ?)`,
-            [req.user.id, food_name.trim(), quantity.trim(), expiry_time, category || null]
+            `INSERT INTO Food_Listing (restaurant_id, food_type, quantity, pickup_by, status) VALUES (?, ?, ?, ?, 'available')`,
+            [req.user.id, String(food_name).trim(), qtyNumeric, expiry_time]
         );
         res.json({ message: 'Listing created successfully!' });
     } catch (err) {
         console.error('Error creating listing:', err);
-        res.status(500).json({ error: 'Database error creating listing: ' + err.message });
+        res.status(500).json({ error: 'Database error: ' + err.message });
     }
 });
 
@@ -352,29 +352,54 @@ app.post('/api/food-listings', authenticateToken, async (req, res) => {
 app.get('/api/food-listings/me', authenticateToken, async (req, res) => {
     if (req.user.role !== 'restaurant') return res.status(403).json({ error: 'Unauthorized' });
     try {
-        const [listings] = await pool.query(`SELECT * FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC`, [req.user.id]);
-        res.json({ listings });
-    } catch (err) { res.status(500).json({ error: 'Database error' }); }
+        const [rows] = await pool.query(
+            `SELECT listing_id as food_id, food_type as food_name, quantity, pickup_by as expiry_time, status, created_at FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC`,
+            [req.user.id]
+        );
+        res.json({ listings: rows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error: ' + err.message });
+    }
 });
 
 // Browse Available Food (NGO)
 app.get('/api/food/available', authenticateToken, async (req, res) => {
     if (req.user.role !== 'ngo') return res.status(403).json({ error: 'Unauthorized' });
     try {
-        const [foods] = await pool.query(`SELECT f.*, r.name as restaurant_name, r.location FROM Food_Listing f JOIN Restaurant r ON f.restaurant_id = r.restaurant_id WHERE f.status = 'Available' AND (f.expiry_time IS NULL OR f.expiry_time > NOW()) ORDER BY f.created_at DESC`);
+        const [foods] = await pool.query(`
+            SELECT f.listing_id as food_id, f.food_type as food_name, f.quantity, f.pickup_by as expiry_time, f.status, f.created_at,
+                   r.name as restaurant_name, r.location
+            FROM Food_Listing f
+            JOIN Restaurant r ON f.restaurant_id = r.restaurant_id
+            WHERE f.status = 'available' AND (f.pickup_by IS NULL OR f.pickup_by > NOW())
+            ORDER BY f.created_at DESC
+        `);
         res.json({ foods });
-    } catch (err) { res.status(500).json({ error: 'Database error' }); }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error: ' + err.message });
+    }
 });
 
 // Request Food (NGO)
 app.post('/api/requests', authenticateToken, async (req, res) => {
     if (req.user.role !== 'ngo') return res.status(403).json({ error: 'Unauthorized' });
-    const { food_id } = req.body;
+    const { food_id } = req.body; // food_id is actually listing_id
     try {
-        await pool.query(`UPDATE Food_Listing SET status = 'Requested' WHERE food_id = ? AND status = 'Available'`, [food_id]);
-        await pool.query(`INSERT INTO Request (food_id, ngo_id, status) VALUES (?, ?, 'Pending')`, [food_id, req.user.id]);
+        await pool.query(
+            `UPDATE Food_Listing SET status = 'requested' WHERE listing_id = ? AND status = 'available'`,
+            [food_id]
+        );
+        await pool.query(
+            `INSERT INTO Request (listing_id, ngo_id, status) VALUES (?, ?, 'pending')`,
+            [food_id, req.user.id]
+        );
         res.json({ message: 'Food requested successfully!' });
-    } catch (err) { res.status(500).json({ error: 'Database error requesting food' }); }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error requesting food: ' + err.message });
+    }
 });
 
 // Get requests for current user context
@@ -385,15 +410,15 @@ app.get('/api/requests/me', authenticateToken, async (req, res) => {
                 SELECT
                     r.request_id,
                     r.status,
-                    r.request_time,
+                    r.created_at as request_time,
                     n.name AS ngo_name,
-                    f.food_name,
+                    f.food_type as food_name,
                     f.quantity
                 FROM Request r
-                JOIN Food_Listing f ON r.food_id = f.food_id
+                JOIN Food_Listing f ON r.listing_id = f.listing_id
                 JOIN NGO n ON r.ngo_id = n.ngo_id
                 WHERE f.restaurant_id = ?
-                ORDER BY r.request_time DESC
+                ORDER BY r.created_at DESC
             `, [req.user.id]);
 
             return res.json({ requests: rows });
@@ -404,15 +429,15 @@ app.get('/api/requests/me', authenticateToken, async (req, res) => {
                 SELECT
                     r.request_id,
                     r.status,
-                    r.request_time,
-                    f.food_name,
+                    r.created_at as request_time,
+                    f.food_type as food_name,
                     f.quantity,
                     rs.name AS restaurant_name
                 FROM Request r
-                JOIN Food_Listing f ON r.food_id = f.food_id
+                JOIN Food_Listing f ON r.listing_id = f.listing_id
                 JOIN Restaurant rs ON f.restaurant_id = rs.restaurant_id
                 WHERE r.ngo_id = ?
-                ORDER BY r.request_time DESC
+                ORDER BY r.created_at DESC
             `, [req.user.id]);
 
             return res.json({ requests: rows });
@@ -421,7 +446,7 @@ app.get('/api/requests/me', authenticateToken, async (req, res) => {
         return res.status(403).json({ error: 'Unauthorized' });
     } catch (err) {
         console.error(err);
-        return res.status(500).json({ error: 'Database error fetching requests' });
+        return res.status(500).json({ error: 'Database error fetching requests: ' + err.message });
     }
 });
 
@@ -440,9 +465,9 @@ app.patch('/api/requests/:requestId/decision', authenticateToken, async (req, re
         await conn.beginTransaction();
 
         const [rows] = await conn.query(`
-            SELECT r.request_id, r.status, r.food_id, f.restaurant_id
+            SELECT r.request_id, r.status, r.listing_id, f.restaurant_id
             FROM Request r
-            JOIN Food_Listing f ON r.food_id = f.food_id
+            JOIN Food_Listing f ON r.listing_id = f.listing_id
             WHERE r.request_id = ?
             LIMIT 1
         `, [requestId]);
@@ -458,23 +483,23 @@ app.patch('/api/requests/:requestId/decision', authenticateToken, async (req, re
             return res.status(403).json({ error: 'You can only manage your own listing requests.' });
         }
 
-        if (requestRow.status !== 'Pending') {
+        if (requestRow.status !== 'pending') {
             await conn.rollback();
             return res.status(400).json({ error: 'Only pending requests can be updated.' });
         }
 
         if (action === 'approve') {
-            await conn.query(`UPDATE Request SET status = 'Approved' WHERE request_id = ?`, [requestId]);
-            await conn.query(`UPDATE Food_Listing SET status = 'Allocated' WHERE food_id = ?`, [requestRow.food_id]);
+            await conn.query(`UPDATE Request SET status = 'approved' WHERE request_id = ?`, [requestId]);
+            await conn.query(`UPDATE Food_Listing SET status = 'allocated' WHERE listing_id = ?`, [requestRow.listing_id]);
 
             await conn.query(`
-                INSERT INTO Delivery (request_id, delivery_status)
-                VALUES (?, 'Pending')
-                ON DUPLICATE KEY UPDATE delivery_status = VALUES(delivery_status)
+                INSERT INTO Delivery (request_id, status)
+                VALUES (?, 'pending')
+                ON DUPLICATE KEY UPDATE status = VALUES(status)
             `, [requestId]);
         } else {
-            await conn.query(`UPDATE Request SET status = 'Rejected' WHERE request_id = ?`, [requestId]);
-            await conn.query(`UPDATE Food_Listing SET status = 'Available' WHERE food_id = ?`, [requestRow.food_id]);
+            await conn.query(`UPDATE Request SET status = 'rejected' WHERE request_id = ?`, [requestId]);
+            await conn.query(`UPDATE Food_Listing SET status = 'available' WHERE listing_id = ?`, [requestRow.listing_id]);
         }
 
         await conn.commit();
@@ -482,7 +507,7 @@ app.patch('/api/requests/:requestId/decision', authenticateToken, async (req, re
     } catch (err) {
         await conn.rollback();
         console.error(err);
-        return res.status(500).json({ error: 'Database error updating request decision' });
+        return res.status(500).json({ error: 'Database error updating request decision: ' + err.message });
     } finally {
         conn.release();
     }
@@ -495,21 +520,19 @@ app.get('/api/deliveries/me', authenticateToken, async (req, res) => {
             const [rows] = await pool.query(`
                 SELECT
                     d.delivery_id,
-                    d.delivery_status,
-                    d.delivery_time,
-                    d.delivery_agent,
-                    d.agent_phone,
+                    d.status as delivery_status,
+                    d.created_at as delivery_time,
                     r.request_id,
-                    r.request_time,
+                    r.created_at as request_time,
                     n.name AS ngo_name,
-                    f.food_name,
+                    f.food_type as food_name,
                     f.quantity
                 FROM Delivery d
                 JOIN Request r ON d.request_id = r.request_id
-                JOIN Food_Listing f ON r.food_id = f.food_id
+                JOIN Food_Listing f ON r.listing_id = f.listing_id
                 JOIN NGO n ON r.ngo_id = n.ngo_id
                 WHERE f.restaurant_id = ?
-                ORDER BY r.request_time DESC
+                ORDER BY r.created_at DESC
             `, [req.user.id]);
 
             return res.json({ deliveries: rows });
@@ -519,21 +542,19 @@ app.get('/api/deliveries/me', authenticateToken, async (req, res) => {
             const [rows] = await pool.query(`
                 SELECT
                     d.delivery_id,
-                    d.delivery_status,
-                    d.delivery_time,
-                    d.delivery_agent,
-                    d.agent_phone,
+                    d.status as delivery_status,
+                    d.created_at as delivery_time,
                     r.request_id,
-                    r.request_time,
+                    r.created_at as request_time,
                     rs.name AS restaurant_name,
-                    f.food_name,
+                    f.food_type as food_name,
                     f.quantity
                 FROM Delivery d
                 JOIN Request r ON d.request_id = r.request_id
-                JOIN Food_Listing f ON r.food_id = f.food_id
+                JOIN Food_Listing f ON r.listing_id = f.listing_id
                 JOIN Restaurant rs ON f.restaurant_id = rs.restaurant_id
                 WHERE r.ngo_id = ?
-                ORDER BY r.request_time DESC
+                ORDER BY r.created_at DESC
             `, [req.user.id]);
 
             return res.json({ deliveries: rows });
@@ -542,29 +563,21 @@ app.get('/api/deliveries/me', authenticateToken, async (req, res) => {
         return res.status(403).json({ error: 'Unauthorized' });
     } catch (err) {
         console.error(err);
-        return res.status(500).json({ error: 'Database error fetching deliveries' });
+        return res.status(500).json({ error: 'Database error fetching deliveries: ' + err.message });
     }
 });
 
 // Update delivery status (Restaurant only)
+// Note: real Delivery table only has: delivery_id, request_id, status, created_at
 app.patch('/api/deliveries/:deliveryId/status', authenticateToken, async (req, res) => {
     if (req.user.role !== 'restaurant') return res.status(403).json({ error: 'Unauthorized' });
 
     const deliveryId = Number(req.params.deliveryId);
-    const { status, delivery_agent, agent_phone } = req.body;
-    const agentName = typeof delivery_agent === 'string' ? delivery_agent.trim() : '';
-    const agentPhone = typeof agent_phone === 'string' ? agent_phone.trim() : '';
-    const allowed = ['In Transit', 'Delivered', 'Cancelled'];
-    if (!allowed.includes(status)) {
-        return res.status(400).json({ error: 'Invalid delivery status.' });
-    }
-
-    if (status === 'In Transit' && (!agentName || !agentPhone)) {
-        return res.status(400).json({ error: 'Delivery agent name and phone are required for In Transit.' });
-    }
-
-    if (agentPhone && !/^[0-9+()\-\s]{7,20}$/.test(agentPhone)) {
-        return res.status(400).json({ error: 'Invalid phone number format.' });
+    const { status } = req.body;
+    const allowed = ['in transit', 'delivered', 'cancelled'];
+    const statusLower = String(status || '').toLowerCase();
+    if (!allowed.includes(statusLower)) {
+        return res.status(400).json({ error: 'Invalid delivery status. Use: in transit, delivered, cancelled' });
     }
 
     try {
@@ -572,7 +585,7 @@ app.patch('/api/deliveries/:deliveryId/status', authenticateToken, async (req, r
             SELECT d.delivery_id, f.restaurant_id
             FROM Delivery d
             JOIN Request r ON d.request_id = r.request_id
-            JOIN Food_Listing f ON r.food_id = f.food_id
+            JOIN Food_Listing f ON r.listing_id = f.listing_id
             WHERE d.delivery_id = ?
             LIMIT 1
         `, [deliveryId]);
@@ -585,37 +598,12 @@ app.patch('/api/deliveries/:deliveryId/status', authenticateToken, async (req, r
             return res.status(403).json({ error: 'You can only update your own deliveries.' });
         }
 
-        if (status === 'Delivered') {
-            await pool.query(
-                `
-                UPDATE Delivery
-                SET
-                    delivery_status = ?,
-                    delivery_time = NOW(),
-                    delivery_agent = COALESCE(NULLIF(?, ''), delivery_agent),
-                    agent_phone = COALESCE(NULLIF(?, ''), agent_phone)
-                WHERE delivery_id = ?
-                `,
-                [status, agentName, agentPhone, deliveryId]
-            );
-        } else {
-            await pool.query(
-                `
-                UPDATE Delivery
-                SET
-                    delivery_status = ?,
-                    delivery_agent = COALESCE(NULLIF(?, ''), delivery_agent),
-                    agent_phone = COALESCE(NULLIF(?, ''), agent_phone)
-                WHERE delivery_id = ?
-                `,
-                [status, agentName, agentPhone, deliveryId]
-            );
-        }
+        await pool.query(`UPDATE Delivery SET status = ? WHERE delivery_id = ?`, [statusLower, deliveryId]);
 
         return res.json({ message: 'Delivery status updated successfully.' });
     } catch (err) {
         console.error(err);
-        return res.status(500).json({ error: 'Database error updating delivery status' });
+        return res.status(500).json({ error: 'Database error updating delivery status: ' + err.message });
     }
 });
 

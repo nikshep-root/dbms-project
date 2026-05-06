@@ -709,19 +709,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const steps = buildSteps(status, d.request_time, d.delivery_time);
       const counterparty = role === 'ngo' ? d.restaurant_name : d.ngo_name;
       const title = `${d.food_name} — ${d.quantity}`;
-      const agentName = d.delivery_agent || 'Not assigned yet';
-      const agentPhone = d.agent_phone || 'Not assigned yet';
-      const agentDetails = `<div class="mt-4 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-600 space-y-1"><p class="font-semibold">Delivery Agent Details</p><p>👤 ${agentName}</p><p>📞 ${agentPhone}</p></div>`;
-      const agentEditor = role === 'restaurant'
-        ? `<div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input class="delivery-agent-input w-full px-3 py-2 rounded-lg border border-gray-200 text-xs" type="text" placeholder="Agent name" value="${d.delivery_agent || ''}">
-            <input class="delivery-phone-input w-full px-3 py-2 rounded-lg border border-gray-200 text-xs" type="text" placeholder="Agent phone" value="${d.agent_phone || ''}">
-          </div>`
-        : '';
+      const agentName = d.delivery_agent || 'Not assigned';
+      const agentPhone = d.agent_phone || 'N/A';
+      const agentDetails = `<div class="mt-4 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs text-gray-600 space-y-1"><p class="font-semibold">Delivery Info</p><p>Status: ${status}</p></div>`;
+      const agentEditor = '';
       const actionButtons = role === 'restaurant'
         ? `<div class="mt-5 flex gap-2">
-            <button class="delivery-action px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition" data-id="${d.delivery_id}" data-status="In Transit">Mark In Transit</button>
-            <button class="delivery-action px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition" data-id="${d.delivery_id}" data-status="Delivered">Mark Delivered</button>
+            <button class="delivery-action px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition" data-id="${d.delivery_id}" data-status="in transit">Mark In Transit</button>
+            <button class="delivery-action px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition" data-id="${d.delivery_id}" data-status="delivered">Mark Delivered</button>
           </div>`
         : '';
 
@@ -756,25 +751,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (role === 'restaurant') {
       grid.querySelectorAll('.delivery-action').forEach(btn => btn.addEventListener('click', async () => {
         try {
-          const card = btn.closest('.delivery-card');
-          const agentInput = card ? card.querySelector('.delivery-agent-input') : null;
-          const phoneInput = card ? card.querySelector('.delivery-phone-input') : null;
-          const agentName = agentInput ? agentInput.value.trim() : '';
-          const agentPhone = phoneInput ? phoneInput.value.trim() : '';
-
-          if (btn.dataset.status === 'In Transit' && (!agentName || !agentPhone)) {
-            showToast('Add delivery agent name and phone first');
-            return;
-          }
-
           const resp = await fetch(`/api/deliveries/${btn.dataset.id}/status`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({
-              status: btn.dataset.status,
-              delivery_agent: agentName,
-              agent_phone: agentPhone
-            })
+            body: JSON.stringify({ status: btn.dataset.status })
           });
           if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
