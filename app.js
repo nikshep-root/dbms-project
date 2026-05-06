@@ -872,17 +872,21 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (res.ok) {
-        showToast('🎉 Premium Food Listing broadcasted directly to DB!');
+        showToast('🎉 Food Listing added successfully!');
         // @ts-ignore
         e.target.reset();
         document.querySelectorAll('#categoryChips .chip').forEach(c => c.classList.remove('selected'));
         document.querySelector('#categoryChips .chip[data-value="cooked"]')?.classList.add('selected');
+        const expEl = /** @type {HTMLInputElement} */ ($('foodExpiry'));
+        if (expEl) { const d2 = new Date(); d2.setHours(d2.getHours() + 4); expEl.value = toLocalDateTimeInputValue(d2); }
         
         setTimeout(() => {
           navigateTo('food-listings');
         }, 1000);
       } else {
-        showToast('⚠️ Failed to post listing. Check backend.');
+        let errMsg = 'Failed to post listing.';
+        try { const errData = await res.json(); errMsg = errData.error || errMsg; } catch (_) {}
+        showToast(`⚠️ ${errMsg}`);
       }
     } catch (err) {
       showToast('❌ Critical connection error.');

@@ -331,12 +331,20 @@ app.get('/api/dashboard/stats/ngo', authenticateToken, async (req, res) => {
 app.post('/api/food-listings', authenticateToken, async (req, res) => {
     if (req.user.role !== 'restaurant') return res.status(403).json({ error: 'Unauthorized' });
     const { food_name, quantity, expiry_time, category } = req.body;
+
+    if (!food_name || !food_name.trim()) return res.status(400).json({ error: 'Food name is required.' });
+    if (!quantity || !quantity.trim()) return res.status(400).json({ error: 'Quantity is required.' });
+    if (!expiry_time) return res.status(400).json({ error: 'Pickup deadline (expiry time) is required.' });
+
     try {
-        await pool.query(`INSERT INTO Food_Listing (restaurant_id, food_name, quantity, expiry_time, status, category) VALUES (?, ?, ?, ?, 'Available', ?)`, [req.user.id, food_name, quantity, expiry_time || null, category || null]);
+        await pool.query(
+            `INSERT INTO Food_Listing (restaurant_id, food_name, quantity, expiry_time, status, category) VALUES (?, ?, ?, ?, 'Available', ?)`,
+            [req.user.id, food_name.trim(), quantity.trim(), expiry_time, category || null]
+        );
         res.json({ message: 'Listing created successfully!' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Database error creating listing' });
+        console.error('Error creating listing:', err);
+        res.status(500).json({ error: 'Database error creating listing: ' + err.message });
     }
 });
 
