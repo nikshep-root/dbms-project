@@ -198,9 +198,9 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
             profileDetails = users[0];
 
             // Get Listing History
-            const [listings] = await pool.query('SELECT food_name, quantity, status, created_at FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 10', [id]);
+            const [listings] = await pool.query('SELECT food_type, quantity, status, created_at FROM Food_Listing WHERE restaurant_id = ? ORDER BY created_at DESC LIMIT 10', [id]);
             history = listings.map(l => ({
-                action: `Listed ${l.food_name} (${l.quantity})`,
+                action: `Listed ${l.food_type} (${l.quantity} qty)`,
                 status: l.status,
                 time: l.created_at
             }));
@@ -212,15 +212,15 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 
             // Get Request History
             const [requests] = await pool.query(`
-                SELECT r.status, r.request_time, f.food_name 
+                SELECT r.status, r.created_at, f.food_type 
                 FROM Request r 
-                JOIN Food_Listing f ON r.food_id = f.food_id 
-                WHERE r.ngo_id = ? ORDER BY r.request_time DESC LIMIT 10
+                JOIN Food_Listing f ON r.listing_id = f.listing_id 
+                WHERE r.ngo_id = ? ORDER BY r.created_at DESC LIMIT 10
             `, [id]);
             history = requests.map(r => ({
-                action: `Requested ${r.food_name}`,
+                action: `Requested ${r.food_type}`,
                 status: r.status,
-                time: r.request_time
+                time: r.created_at
             }));
         }
 
