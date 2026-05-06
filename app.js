@@ -26,47 +26,17 @@ const badge = (status) => {
   return `<span class="inline-flex px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide rounded-full ${map[normalized] || 'bg-gray-100 text-gray-500'}">${label}</span>`;
 };
 
-// ─── Sample Data ───
-const foodItems = [
-  { id: 1, name: 'Vegetable Biryani', qty: '10 kg', restaurant: "Raj's Kitchen", location: 'Koramangala, Bangalore', status: 'available', expiresIn: '3h' },
-  { id: 2, name: 'Bread Rolls', qty: '50 items', restaurant: "Baker's Delight", location: 'Indiranagar, Bangalore', status: 'available', expiresIn: '8h' },
-  { id: 3, name: 'Dal Makhani', qty: '5 kg', restaurant: 'Spice Garden', location: 'HSR Layout, Bangalore', status: 'pending', expiresIn: '2h' },
-  { id: 4, name: 'Fresh Fruit Salad', qty: '3 kg', restaurant: 'Green Bowl', location: 'Whitefield, Bangalore', status: 'allocated', expiresIn: '6h' },
-  { id: 5, name: 'Paneer Tikka', qty: '20 portions', restaurant: 'Tandoori Nights', location: 'MG Road, Bangalore', status: 'available', expiresIn: '5h' },
-  { id: 6, name: 'Caesar Salad', qty: '2 kg', restaurant: 'The Salad Bar', location: 'JP Nagar, Bangalore', status: 'expired', expiresIn: 'Expired' },
-];
-
-const requests = [
-  { id: '#REQ-1041', ngo: 'Hope Foundation', food: 'Bread Rolls', qty: '30 items', time: '14 Apr, 6:12 PM', status: 'pending' },
-  { id: '#REQ-1040', ngo: 'Akshaya Trust', food: 'Paneer Tikka', qty: '15 portions', time: '14 Apr, 5:48 PM', status: 'pending' },
-  { id: '#REQ-1039', ngo: 'Feed India', food: 'Dal Makhani', qty: '5 kg', time: '14 Apr, 4:30 PM', status: 'approved' },
-  { id: '#REQ-1038', ngo: 'Annapurna NGO', food: 'Veg Pulao', qty: '8 portions', time: '14 Apr, 3:15 PM', status: 'approved' },
-  { id: '#REQ-1037', ngo: 'Helping Hands', food: 'Caesar Salad', qty: '2 kg', time: '14 Apr, 2:00 PM', status: 'rejected' },
-  { id: '#REQ-1036', ngo: 'Care Foundation', food: 'Fruit Salad', qty: '3 kg', time: '14 Apr, 1:20 PM', status: 'pending' },
-  { id: '#REQ-1035', ngo: 'Seva Trust', food: 'Idli & Sambar', qty: '25 portions', time: '14 Apr, 11:45 AM', status: 'approved' },
-  { id: '#REQ-1034', ngo: 'New Hope Society', food: 'Expired Pastries', qty: '12 items', time: '14 Apr, 10:30 AM', status: 'rejected' },
-];
-
-const deliveries = [
-  { food: 'Dal Makhani — 5 kg', ngo: 'Feed India', status: 'in-transit', steps: [{ s: 'completed', t: '4:30 PM' }, { s: 'active', t: '5:15 PM' }, { s: '', t: '—' }] },
-  { food: 'Veg Pulao — 8 portions', ngo: 'Annapurna NGO', status: 'delivered', steps: [{ s: 'completed', t: '3:15 PM' }, { s: 'completed', t: '3:50 PM' }, { s: 'completed', t: '4:20 PM' }] },
-  { food: 'Idli & Sambar — 25 portions', ngo: 'Seva Trust', status: 'pending', steps: [{ s: 'active', t: '11:45 AM' }, { s: '', t: '—' }, { s: '', t: '—' }] },
-  { food: 'Bread Rolls — 40 items', ngo: 'Hope Foundation', status: 'in-transit', steps: [{ s: 'completed', t: '12:00 PM' }, { s: 'active', t: '1:10 PM' }, { s: '', t: '—' }] },
-];
-
-const listings = [
-  { name: 'Vegetable Biryani', qty: '10 kg', expiry: '14 Apr, 10:00 PM', status: 'available', ngo: null, warn: false },
-  { name: 'Dal Makhani', qty: '5 kg', expiry: '14 Apr, 8:30 PM', status: 'allocated', ngo: 'Feed India', warn: true },
-  { name: 'Bread Rolls', qty: '50 items', expiry: '15 Apr, 6:00 AM', status: 'pending', ngo: 'Hope Foundation', warn: false },
-  { name: 'Paneer Tikka', qty: '20 portions', expiry: '14 Apr, 11:00 PM', status: 'available', ngo: null, warn: false },
-  { name: 'Caesar Salad', qty: '2 kg', expiry: '14 Apr, 8:00 PM', status: 'expired', ngo: null, warn: true },
-  { name: 'Fresh Fruit Salad', qty: '3 kg', expiry: '15 Apr, 12:00 PM', status: 'allocated', ngo: 'Care Foundation', warn: false },
-];
+// Data containers (populated from API)
+let foodItems = [];
+let requests = [];
+let deliveries = [];
+let listings = [];
 
 // ─── DOM Ready ───
 document.addEventListener('DOMContentLoaded', () => {
   const $ = (/** @type {string} */ s) => document.getElementById(s);
   const sidebar = $('sidebar'), overlay = $('sidebarOverlay');
+  let profileEditContext = null;
 
   function getStoredUser() {
     try {
@@ -102,6 +72,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const user = getStoredUser();
     user.name = safeName;
     localStorage.setItem('foodbridge_user', JSON.stringify(user));
+  }
+
+  function openProfileEditModal(profile) {
+    const modal = $('profileModal');
+    const modalInner = $('profileModalInner');
+    if (!modal || !modalInner || !profile) return;
+
+    profileEditContext = profile;
+    $('editProfileName').value = profile.name || '';
+    $('editProfileEmail').value = profile.email || '';
+    $('editProfileLocation').value = profile.location || '';
+    $('editProfileContact').value = profile.contact || '';
+
+    modal.classList.remove('hidden');
+    modal.classList.remove('opacity-0', 'pointer-events-none');
+    modalInner.classList.remove('scale-95');
+    modalInner.classList.add('scale-100');
+    modal.setAttribute('aria-hidden', 'false');
+    $('editProfileName')?.focus();
+  }
+
+  function closeProfileEditModal() {
+    const modal = $('profileModal');
+    const modalInner = $('profileModalInner');
+    if (!modal || !modalInner) return;
+
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    modalInner.classList.remove('scale-100');
+    modalInner.classList.add('scale-95');
+    modal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => modal.classList.add('hidden'), 300);
   }
 
   // Sidebar toggle
@@ -477,8 +478,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (!res.ok) return;
       const { foods } = await res.json();
+      foodItems = Array.isArray(foods) ? foods : [];
 
-      if (foods.length === 0) {
+      if (foodItems.length === 0) {
         grid.innerHTML = '<div class="col-span-full py-16 text-center text-gray-500 font-medium">No available food right now. Check back later!</div>';
         return;
       }
@@ -486,12 +488,12 @@ document.addEventListener('DOMContentLoaded', () => {
       grid.innerHTML = foods.map((f, i) => {
         const now = new Date();
         const exp = f.expiry_time ? new Date(f.expiry_time) : null;
-        let timeMsg = 'No Expiry';
+        let timeMsg = 'No Pickup Deadline';
         let bgClass = 'bg-emerald-50 text-emerald-700';
         if (exp) {
           const diffHrs = Math.floor((exp.getTime() - now.getTime()) / 3600000);
           if (diffHrs < 2) bgClass = 'bg-red-50 text-red-600 font-bold';
-          timeMsg = diffHrs > 0 ? `Expires in ${diffHrs}h` : 'Expiring soon';
+          timeMsg = diffHrs > 0 ? `Pickup by ${diffHrs}h` : 'Pickup needed soon';
         }
 
         return `<div class="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl hover:-translate-y-2 transition-all duration-300 animate-slide-up" style="animation-delay:${i * 50}ms">
@@ -885,8 +887,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const q = searchInput?.value.toLowerCase() || '';
     const s = statusSelect?.value || 'all';
     document.querySelectorAll('#foodGrid > div').forEach((card, i) => {
-      const name = foodItems[i]?.name.toLowerCase() || '';
-      const status = foodItems[i]?.status || '';
+      const item = foodItems[i] || {};
+      const name = String(item.food_name || item.name || '').toLowerCase();
+      const status = normalizeStatus(item.status || item.delivery_status || '');
       card.style.display = (name.includes(q) && (s === 'all' || status === s)) ? '' : 'none';
     });
   }
@@ -1002,17 +1005,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
+  // Focus-trap state
+  let _lastFocusedElement = null;
+  let _authKeyHandler = null;
+
   // Open Auth Modal
   const openAuthModal = () => {
     if (authModal && authModalInner) {
+      // Remember previously focused element
+      _lastFocusedElement = document.activeElement;
       // Always start from a predictable role selection when auth modal opens.
       setAuthRole('restaurant');
+      // expose modal to assistive tech
+      authModal.setAttribute('aria-hidden', 'false');
+      // hide background app content
+      document.getElementById('landingPage')?.setAttribute('aria-hidden', 'true');
+      document.getElementById('dashboardApp')?.setAttribute('aria-hidden', 'true');
+
+      // set toggles expanded
+      ['enterDashboardBtn','heroDashboardBtn','ctaDashboardBtn'].forEach(id => document.getElementById(id)?.setAttribute('aria-expanded','true'));
+
       authModal.classList.remove('hidden');
       // small delay for transition
       setTimeout(() => {
         authModal.classList.remove('opacity-0', 'pointer-events-none');
         authModalInner.classList.remove('scale-95');
         authModalInner.classList.add('scale-100');
+        // focus first input in modal
+        const first = authModal.querySelector('input,button,select,textarea,a[href]');
+        if (first && (first instanceof HTMLElement)) first.focus();
+
+        // install key handler to trap focus and close on Escape
+        _authKeyHandler = (ev) => {
+          if (ev.key === 'Escape') {
+            ev.preventDefault();
+            closeAuthModal();
+            return;
+          }
+          if (ev.key === 'Tab') {
+            const focusable = Array.from(authModal.querySelectorAll('input,button,select,textarea,a[href]'))
+              .filter((el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true')
+              .map(el => /** @type {HTMLElement} */ (el));
+            if (focusable.length === 0) return;
+            const firstEl = focusable[0];
+            const lastEl = focusable[focusable.length - 1];
+            if (ev.shiftKey) {
+              if (document.activeElement === firstEl) { ev.preventDefault(); lastEl.focus(); }
+            } else {
+              if (document.activeElement === lastEl) { ev.preventDefault(); firstEl.focus(); }
+            }
+          }
+        };
+        document.addEventListener('keydown', _authKeyHandler);
       }, 10);
     }
   };
@@ -1023,7 +1067,25 @@ document.addEventListener('DOMContentLoaded', () => {
       authModal.classList.add('opacity-0', 'pointer-events-none');
       authModalInner.classList.remove('scale-100');
       authModalInner.classList.add('scale-95');
-      setTimeout(() => authModal.classList.add('hidden'), 300);
+
+      // hide to assistive tech
+      authModal.setAttribute('aria-hidden', 'true');
+      document.getElementById('landingPage')?.setAttribute('aria-hidden', 'false');
+      document.getElementById('dashboardApp')?.setAttribute('aria-hidden', 'false');
+
+      // reset toggles
+      ['enterDashboardBtn','heroDashboardBtn','ctaDashboardBtn'].forEach(id => document.getElementById(id)?.setAttribute('aria-expanded','false'));
+
+      // remove key handler
+      if (_authKeyHandler) document.removeEventListener('keydown', _authKeyHandler);
+      _authKeyHandler = null;
+
+      setTimeout(() => {
+        authModal.classList.add('hidden');
+        // restore focus
+        try { if (_lastFocusedElement && (/** @type {HTMLElement} */ (_lastFocusedElement)).focus) (/** @type {HTMLElement} */ (_lastFocusedElement)).focus(); } catch (e) { }
+        _lastFocusedElement = null;
+      }, 300);
     }
   };
 
@@ -1176,6 +1238,70 @@ document.addEventListener('DOMContentLoaded', () => {
     location.reload();
   });
 
+  $('editProfileBtn')?.addEventListener('click', () => {
+    if (!profileEditContext) {
+      loadProfile();
+      return;
+    }
+    openProfileEditModal(profileEditContext);
+  });
+  $('closeProfileModal')?.addEventListener('click', closeProfileEditModal);
+  $('cancelProfileEdit')?.addEventListener('click', closeProfileEditModal);
+  $('profileModal')?.addEventListener('click', (e) => {
+    if (e.target === $('profileModal')) closeProfileEditModal();
+  });
+
+  $('profileEditForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const token = localStorage.getItem('foodbridge_token');
+    if (!token) return;
+
+    const payload = {
+      name: $('editProfileName').value.trim(),
+      email: $('editProfileEmail').value.trim(),
+      location: $('editProfileLocation').value.trim(),
+      contact: $('editProfileContact').value.trim(),
+    };
+
+    const saveBtn = $('saveProfileBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+    }
+
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(`❌ ${data.error || 'Could not update profile'}`);
+        return;
+      }
+
+      showToast('✅ Profile updated successfully');
+      setStoredUserName(payload.name);
+      updateIdentityUI(payload.name);
+      await loadProfile();
+      closeProfileEditModal();
+    } catch (err) {
+      console.error(err);
+      showToast('❌ Backend server error while saving profile.');
+    } finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Changes';
+      }
+    }
+  });
+
   // ─── PROFILE LOAD ───
   async function loadProfile() {
     const token = localStorage.getItem('foodbridge_token');
@@ -1196,6 +1322,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const { profile, history } = data;
       if (profile) {
+        profileEditContext = profile;
         setStoredUserName(profile.name);
         updateIdentityUI(profile.name);
         // @ts-ignore
@@ -1242,6 +1369,31 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.error(err);
     }
+  }
+
+  function showDashboardApp() {
+    const landing = $('landingPage');
+    const app = $('dashboardApp');
+    if (landing) landing.classList.add('hidden');
+    if (app) {
+      app.classList.remove('hidden');
+      app.setAttribute('aria-hidden', 'false');
+    }
+  }
+
+  function restoreSessionFromStorage() {
+    const token = localStorage.getItem('foodbridge_token');
+    const user = getStoredUser();
+    if (!token || !user?.role) return;
+
+    showDashboardApp();
+    updateIdentityUI(user.name);
+    // @ts-ignore
+    $('topbarRole').textContent = user.role;
+    setupRoleBasedUI(user.role);
+    loadProfile();
+    startNotificationPolling();
+    startDashboardRealtime();
   }
 
   // ─── ROLE BASED UI LOGIC ───
@@ -1302,7 +1454,7 @@ document.addEventListener('DOMContentLoaded', () => {
                       <div class="absolute inset-0 bg-gradient-to-br from-red-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
                       <div class="relative z-10 flex items-center justify-between mb-6"><div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-50 to-red-100/50 flex items-center justify-center text-3xl shadow-inner border border-white">⚠️</div><span class="text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-full shadow-sm">Alert</span></div>
                       <p class="relative z-10 text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 tracking-tight" data-count="${stats.expiring_soon}">0</p>
-                      <p class="relative z-10 text-sm font-semibold text-gray-500 mt-2 uppercase tracking-wide">Expiring Soon</p>
+                      <p class="relative z-10 text-sm font-semibold text-gray-500 mt-2 uppercase tracking-wide">Pickup Needed Soon</p>
                   </div>
               `;
         quickActions.innerHTML = `
@@ -1379,11 +1531,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  if (localStorage.getItem('foodbridge_token')) {
-    updateIdentityUI(getStoredUser()?.name);
-    loadProfile();
-    startNotificationPolling();
-    startDashboardRealtime();
-  }
+  restoreSessionFromStorage();
 
 });

@@ -119,3 +119,21 @@
 .page.active {
   display: block;
 }
+
+/* Accessible focus styles for keyboard users */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(16,185,129,0.20);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(16,185,129,0.08);
+  border-radius: 8px;
+}
+
+/* Utility class for forcing focus ring when needed */
+.focus-ring:focus {
+  outline: 3px solid rgba(16,185,129,0.20);
+  outline-offset: 2px;
+}

@@ -67,9 +67,9 @@
                     <a href="#impact" class="text-white/80 hover:text-white text-sm font-medium transition">Impact</a>
                     <a href="#scenes" class="text-white/80 hover:text-white text-sm font-medium transition">Gallery</a>
                 </div>
-                <button id="enterDashboardBtn"
+                <button id="enterDashboardBtn" aria-expanded="false"
                     class="px-5 py-2.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white text-sm font-semibold hover:bg-white/20 transition-all duration-300">
-                    Go to Dashboard →
+                    Enter Dashboard →
                 </button>
             </div>
         </nav>
@@ -79,7 +79,7 @@
             <!-- Parallax Background -->
             <div class="absolute inset-0 z-0">
                 <img src="images/hero.png" alt="Fresh food spread"
-                    class="w-full h-full object-cover scale-110 parallax-bg"
+                    class="w-full h-full object-cover scale-110 parallax-bg" loading="lazy"
                     onerror="this.parentElement.classList.add('bg-gradient-to-br','from-slate-900','via-brand-900','to-slate-800')" />
                 <div class="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/50 to-slate-900/90"></div>
             </div>
@@ -105,7 +105,7 @@
                     landfills.
                 </p>
                 <div class="scroll-reveal flex flex-col sm:flex-row gap-4 justify-center" style="animation-delay:.3s">
-                    <button id="heroDashboardBtn"
+                    <button id="heroDashboardBtn" aria-expanded="false"
                         class="px-8 py-4 rounded-2xl bg-gradient-to-r from-brand-500 to-brand-600 text-white font-bold text-base hover:shadow-2xl hover:shadow-brand-500/30 hover:-translate-y-1 active:scale-[.98] transition-all duration-300">
                         Enter Dashboard →
                     </button>
@@ -142,7 +142,7 @@
                         <div class="w-12 h-1 rounded-full bg-brand-500 mx-auto mb-4"></div>
                         <h3 class="text-xl font-bold text-gray-900 mb-3">Restaurant Lists Food</h3>
                         <p class="text-gray-500 text-sm leading-relaxed">Restaurants post surplus food with quantity,
-                            expiry time, and category. Takes less than 30 seconds.</p>
+                            pickup-by time, and category. Takes less than 30 seconds.</p>
                     </div>
                     <div class="scroll-reveal text-center group" style="animation-delay:.15s">
                         <div
@@ -215,7 +215,7 @@
                     <div
                         class="scroll-reveal scene-card group relative rounded-3xl overflow-hidden h-[420px] cursor-pointer">
                         <img src="images/hero.png" alt="Food preparation"
-                            class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" loading="lazy"
                             onerror="this.parentElement.classList.add('bg-gradient-to-br','from-brand-500','to-brand-700')" />
                         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                         <div
@@ -230,7 +230,7 @@
                     <div class="scroll-reveal scene-card group relative rounded-3xl overflow-hidden h-[420px] cursor-pointer"
                         style="animation-delay:.15s">
                         <img src="images/ngo.png" alt="NGO distribution"
-                            class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" loading="lazy"
                             onerror="this.parentElement.classList.add('bg-gradient-to-br','from-blue-500','to-blue-700')" />
                         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                         <div
@@ -245,7 +245,7 @@
                     <div class="scroll-reveal scene-card group relative rounded-3xl overflow-hidden h-[420px] cursor-pointer"
                         style="animation-delay:.3s">
                         <img src="images/delivery.png" alt="Delivery"
-                            class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                            class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" loading="lazy"
                             onerror="this.parentElement.classList.add('bg-gradient-to-br','from-amber-500','to-amber-700')" />
                         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                         <div
@@ -271,9 +271,9 @@
                 </h2>
                 <p class="scroll-reveal text-brand-100/70 text-lg mb-10">Join the FoodBridge network and help eliminate
                     food waste in your city.</p>
-                <button id="ctaDashboardBtn"
+                <button id="ctaDashboardBtn" aria-expanded="false"
                     class="scroll-reveal px-10 py-4 rounded-2xl bg-white text-brand-700 font-bold text-base hover:shadow-2xl hover:-translate-y-1 active:scale-[.98] transition-all duration-300">
-                    Launch Dashboard →
+                    Enter Dashboard →
                 </button>
             </div>
         </section>
@@ -285,10 +285,10 @@
     </div>
 
     <!-- ===================== AUTH MODAL (Login / Register) ===================== -->
-    <div id="authModal"
+    <div id="authModal" role="dialog" aria-modal="true" aria-hidden="true"
         class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300 hidden">
         <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transform scale-95 transition-transform duration-300"
-            id="authModalInner">
+            id="authModalInner" tabindex="-1">
 
             <!-- Auth Header Tabs -->
             <div class="flex border-b border-gray-100">
@@ -392,7 +392,7 @@
     </div>
 
     <!-- ===================== DASHBOARD APP (hidden initially) ===================== -->
-    <div id="dashboardApp" class="hidden">
+    <div id="dashboardApp" class="hidden" aria-hidden="true">
 
         <!-- SIDEBAR -->
         <aside id="sidebar"
@@ -571,6 +571,10 @@
                         class="bg-white rounded-3xl border border-gray-100 p-8 flex flex-col items-center text-center shadow-lg shadow-gray-200/40 relative overflow-hidden">
                         <div class="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-brand-500 to-brand-700">
                         </div>
+                        <button id="editProfileBtn"
+                            class="absolute top-4 right-4 z-20 px-3 py-1.5 rounded-full bg-white/95 text-brand-700 text-xs font-bold shadow-md hover:bg-white transition">
+                            Edit Profile
+                        </button>
                         <div
                             class="w-24 h-24 rounded-full bg-white flex items-center justify-center text-4xl mb-4 shadow-xl relative z-10 p-2 border-4 border-white">
                             <div class="w-full h-full rounded-full bg-brand-50 flex items-center justify-center">👤
@@ -630,6 +634,52 @@
                     </div>
                 </div>
             </section>
+
+            <!-- ============ EDIT PROFILE MODAL ============ -->
+            <div id="profileModal" role="dialog" aria-modal="true" aria-hidden="true"
+                class="fixed inset-0 z-[110] hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 opacity-0 pointer-events-none transition-opacity duration-300">
+                <div id="profileModalInner"
+                    class="w-full max-w-lg rounded-3xl bg-white shadow-2xl transform scale-95 transition-transform duration-300 overflow-hidden">
+                    <div class="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                        <div>
+                            <h3 class="text-xl font-extrabold text-gray-900">Edit Profile</h3>
+                            <p class="text-sm text-gray-500 mt-1">Update your account details</p>
+                        </div>
+                        <button id="closeProfileModal"
+                            class="w-9 h-9 rounded-full bg-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition text-lg leading-none">&times;</button>
+                    </div>
+                    <form id="profileEditForm" class="p-6 space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Name</label>
+                            <input id="editProfileName" type="text" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
+                            <input id="editProfileEmail" type="email" required
+                                class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Location</label>
+                                <input id="editProfileLocation" type="text" required
+                                    class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Contact</label>
+                                <input id="editProfileContact" type="text" required
+                                    class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-end gap-3 pt-2">
+                            <button type="button" id="cancelProfileEdit"
+                                class="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold hover:bg-gray-200 transition">Cancel</button>
+                            <button type="submit" id="saveProfileBtn"
+                                class="px-5 py-2.5 rounded-xl bg-brand-500 text-white text-sm font-bold hover:bg-brand-600 transition">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
             <!-- ============ DASHBOARD ============ -->
             <section id="page-dashboard" class="page active p-8 md:p-12 animate-fade-in relative min-h-screen">
@@ -763,7 +813,7 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-2">Expiry Date & Time</label>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Pickup By Date & Time</label>
                                 <input type="datetime-local" id="foodExpiry" required
                                     class="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
                             </div>
@@ -820,8 +870,8 @@
                     </select>
                     <select id="expirySort"
                         class="px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition min-w-[160px]">
-                        <option value="soonest">Expiry: Soonest</option>
-                        <option value="latest">Expiry: Latest</option>
+                        <option value="soonest">Pickup By: Soonest</option>
+                        <option value="latest">Pickup By: Latest</option>
                     </select>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5" id="foodGrid">
@@ -909,7 +959,7 @@
                                         Quantity</th>
                                     <th
                                         class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 px-6 py-4">
-                                        Expiry</th>
+                                        Pickup By</th>
                                     <th
                                         class="text-left text-[11px] font-bold uppercase tracking-wider text-gray-400 px-6 py-4">
                                         Status</th>

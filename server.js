@@ -233,6 +233,48 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
     }
 });
 
+app.put('/api/profile', authenticateToken, async (req, res) => {
+    try {
+        const { id, role } = req.user;
+        const { name, email, location, contact } = req.body;
+
+        if (!name || !email || !location || !contact) {
+            return res.status(400).json({ error: 'All profile fields are required.' });
+        }
+
+        const table = role === 'restaurant' ? 'Restaurant' : 'NGO';
+        const idColumn = role === 'restaurant' ? 'restaurant_id' : 'ngo_id';
+
+        const [existingRestaurant] = await pool.query(
+            `SELECT ${idColumn} FROM ${table} WHERE email = ? AND ${idColumn} != ?`,
+            [email.trim(), id]
+        );
+        const otherTable = role === 'restaurant' ? 'NGO' : 'Restaurant';
+        const otherIdColumn = role === 'restaurant' ? 'ngo_id' : 'restaurant_id';
+        const [existingOther] = await pool.query(
+            `SELECT ${otherIdColumn} FROM ${otherTable} WHERE email = ?`,
+            [email.trim()]
+        );
+
+        if (existingRestaurant.length > 0 || existingOther.length > 0) {
+            return res.status(400).json({ error: 'Email already registered.' });
+        }
+
+        await pool.query(
+            `UPDATE ${table} SET name = ?, email = ?, location = ?, contact = ? WHERE ${idColumn} = ?`,
+            [name.trim(), email.trim(), location.trim(), contact.trim(), id]
+        );
+
+        res.json({
+            message: 'Profile updated successfully',
+            profile: { name: name.trim(), email: email.trim(), location: location.trim(), contact: contact.trim(), role }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Database error updating profile.' });
+    }
+});
+
 // RESTAURANT STATS
 app.get('/api/dashboard/stats/restaurant', authenticateToken, async (req, res) => {
     if (req.user.role !== 'restaurant') return res.status(403).json({ error: 'Unauthorized' });
