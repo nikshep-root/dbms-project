@@ -1,7 +1,12 @@
-__pycache__/
-*.pyc
-.venv/
 node_modules/
 .env
+.env.local
 .DS_Store
 *.log
+.vercel/
+.next/
+dist/
+build/
+*.bak
+.idea/
+.vscode/settings.json

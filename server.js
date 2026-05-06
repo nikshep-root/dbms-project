@@ -29,7 +29,9 @@ const pool = mysql.createPool({
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'foodbridge',
     port: process.env.DB_PORT || 3306,
-    ssl: false, // Disable SSL for localhost connections
+    ssl: process.env.DB_HOST && process.env.DB_HOST !== 'localhost' 
+        ? { rejectUnauthorized: false } 
+        : false, // Enable SSL for cloud DBs (like Aiven), disable for localhost
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
