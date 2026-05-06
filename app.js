@@ -8,6 +8,13 @@
 /** @param {string} status @returns {string} */
 const normalizeStatus = (status) => String(status || '').toLowerCase().replace(/\s+/g, '-');
 
+// ─── Request Status Constants ───
+const REQUEST_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected'
+};
+
 // ─── Badge helper ───
 /** @param {string} status @returns {string} */
 const badge = (status) => {
@@ -265,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       reqRows.forEach(r => {
         const st = normalizeStatus(r.status);
-        if (role === 'restaurant' && st === 'pending') {
+        if (role === 'restaurant' && st === REQUEST_STATUS.PENDING) {
           items.push({
             id: `req-${r.request_id}-${st}`,
             title: 'New Food Request',
@@ -274,10 +281,10 @@ document.addEventListener('DOMContentLoaded', () => {
             goto: 'request-mgmt'
           });
         }
-        if (role === 'ngo' && ['approved', 'rejected'].includes(st)) {
+        if (role === 'ngo' && [REQUEST_STATUS.APPROVED, REQUEST_STATUS.REJECTED].includes(st)) {
           items.push({
             id: `req-${r.request_id}-${st}`,
-            title: st === 'approved' ? 'Request Approved' : 'Request Rejected',
+            title: st === REQUEST_STATUS.APPROVED ? 'Request Approved' : 'Request Rejected',
             message: `${r.food_name} request was ${st}`,
             time: r.request_time,
             goto: 'request-mgmt'
@@ -337,9 +344,9 @@ document.addEventListener('DOMContentLoaded', () => {
       reqRows.forEach(r => {
         const status = normalizeStatus(r.status);
         const who = role === 'restaurant' ? (r.ngo_name || 'An NGO') : (r.restaurant_name || 'A restaurant');
-        const requestMsg = status === 'approved'
+        const requestMsg = status === REQUEST_STATUS.APPROVED
           ? `${r.food_name} request was approved`
-          : status === 'rejected'
+          : status === REQUEST_STATUS.REJECTED
             ? `${r.food_name} request was rejected`
             : `${who} requested ${r.food_name}`;
         activities.push({
@@ -574,9 +581,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const counts = {
       all: reqRows.length,
-      pending: reqRows.filter(r => normalizeStatus(r.status) === 'pending').length,
-      approved: reqRows.filter(r => normalizeStatus(r.status) === 'approved').length,
-      rejected: reqRows.filter(r => normalizeStatus(r.status) === 'rejected').length,
+      pending: reqRows.filter(r => normalizeStatus(r.status) === REQUEST_STATUS.PENDING).length,
+      approved: reqRows.filter(r => normalizeStatus(r.status) === REQUEST_STATUS.APPROVED).length,
+      rejected: reqRows.filter(r => normalizeStatus(r.status) === REQUEST_STATUS.REJECTED).length,
     };
 
     const tabBtns = Array.from(document.querySelectorAll('#requestTabs .tab'));
