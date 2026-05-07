@@ -879,6 +879,218 @@ document.addEventListener('DOMContentLoaded', () => {
   // ─── Search/Filter ───
   const searchInput = $('browseSearch');
   const statusSelect = $('statusFilter');
+  const locationInput = $('locationFilter');
+  const categorySelect = $('categoryFilter');
+  const sortSelect = $('sortFilter');
+  const resetBtn = $('resetFiltersBtn');
+
+  // Load categories on page load
+  async function loadCategories() {
+    try {
+      const res = await fetch('/api/categories');
+      if (res.ok) {
+        const { categories } = await res.json();
+        if (categorySelect) {
+          const currentVal = categorySelect.value;
+          categorySelect.innerHTML = '<option value="">All Categories</option>';
+          categories.forEach(cat => {
+            const opt = document.createElement('option');
+            opt.value = cat;
+            opt.textContent = cat;
+            categorySelect.appendChild(opt);
+          });
+          categorySelect.value = currentVal;
+        }
+      }
+    } catch (e) { console.error('Failed to load categories:', e); }
+  }
+  loadCategories();
+
+  // Perform search with filters
+  async function performSearch() {
+    const grid = $('foodGrid');
+    if (!grid) return;
+
+    const token = localStorage.getItem('foodbridge_token');
+    if (!token) return;
+
+    const query = new URLSearchParams({
+      food_type: searchInput?.value || '',
+      location: locationInput?.value || '',
+      category: categorySelect?.value || '',
+      sort_by: sortSelect?.value || 'newest'
+    }).toString();
+
+    try {
+      grid.innerHTML = '<div class="col-span-full py-12 text-center text-gray-400">🔍 Searching...</div>';
+      const res = await fetch(`/api/food/search?${query}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!res.ok) {
+        grid.innerHTML = '<div class="col-span-full py-12 text-center text-red-400 font-medium">Search failed. Try again.</div>';
+        return;
+      }
+
+      const { foods, count } = await res.json();
+      foodItems = Array.isArray(foods) ? foods : [];
+
+      if (foodItems.length === 0) {
+        grid.innerHTML = '<div class="col-span-full py-12 text-center text-gray-400 font-medium">📭 No food found matching your filters. Try adjusting your search.</div>';
+        return;
+      }
+
+      grid.innerHTML = foods.map((f, i) => {
+        const now = new Date();
+        const exp = f.expiry_time ? new Date(f.expiry_time) : null;
+        let timeMsg = 'No Pickup Deadline';
+        let bgClass = 'bg-emerald-50 text-emerald-700';
+        if (exp) {
+          const diffHrs = Math.floor((exp.getTime() - now.getTime()) / 3600000);
+          if (diffHrs < 2) bgClass = 'bg-red-50 text-red-600 font-bold';
+          timeMsg = diffHrs > 0 ? `Pickup by ${diffHrs}h` : 'Pickup needed soon';
+        }
+
+        return `<div class="bg-white rounded-2xl border border-gray-100 p-6 hover:shadow-xl hover:-translate-y-2 transition-all duration-300 animate-slide-up relative" style="animation-delay:${i * 50}ms">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-100 to-brand-200 flex items-center justify-center text-2xl shadow-sm border border-brand-50">🍱</div>
+                    <div class="flex items-center gap-2">
+                        ${badge(f.status)}
+                        <button class="view-ratings px-3 py-1.5 rounded-lg bg-amber-50 text-amber-600 text-xs font-bold border border-amber-100 hover:bg-amber-100 transition" data-restaurant-id="${f.restaurant_id}" title="View ratings">⭐</button>
+                    </div>
+                </div>
+                <h4 class="font-extrabold text-gray-900 text-lg tracking-tight">${f.food_name}</h4>
+                <p class="text-sm font-bold text-gray-600 mt-1 mb-1 px-3 py-1 bg-gray-50 rounded-lg inline-block border border-gray-100">${f.quantity}</p>
+                ${f.category ? `<p class="text-xs text-gray-500 inline-block ml-2 px-2 py-1 bg-blue-50 rounded border border-blue-100">${f.category}</p>` : ''}
+                <div class="space-y-2 mb-6 mt-4">
+                    <p class="text-xs text-gray-500 flex items-center gap-2 font-medium">🏪 <span class="bg-gray-100 px-2.5 py-1 rounded-md">${f.restaurant_name}</span></p>
+                    <p class="text-xs text-gray-400 flex items-center gap-2 font-medium">📍 <span>${f.location}</span></p>
+                </div>
+                <div class="flex items-center justify-between pt-4 border-t border-gray-100">
+                    <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${bgClass} shadow-sm border border-white">⏰ ${timeMsg}</span>
+                    <button class="req-btn px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 text-white text-xs font-bold shadow-md hover:shadow-brand-500/30 active:scale-95 transition-all" data-id="${f.food_id}">Request</button>
+                </div>
+            </div>`;
+      }).join('');
+
+      // Attach request listeners
+      grid.querySelectorAll('.req-btn').forEach(b => b.addEventListener('click', async () => {
+        const foodId = b.dataset.id;
+        b.innerHTML = '<span class="animate-pulse">Wait...</span>';
+        b.disabled = true;
+        b.className = 'px-4 py-2.5 rounded-xl bg-gray-200 text-gray-500 text-xs font-bold cursor-not-allowed';
+
+        try {
+          const r = await fetch('/api/requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ food_id: foodId })
+          });
+          if (r.ok) { showToast('🎊 Food requested successfully!'); performSearch(); loadNotifications(); }
+          else showToast('⚠️ Already requested or failed.');
+        } catch (e) { showToast('Network Error'); }
+      }));
+
+      // Attach rating view listeners
+      grid.querySelectorAll('.view-ratings').forEach(b => b.addEventListener('click', () => {
+        showRestaurantRatings(b.dataset.restaurantId);
+      }));
+    } catch (e) { console.error(e); grid.innerHTML = '<div class="col-span-full py-12 text-center text-red-400">Network error</div>'; }
+  }
+
+  // Event listeners for filters
+  searchInput?.addEventListener('input', performSearch);
+  locationInput?.addEventListener('input', performSearch);
+  categorySelect?.addEventListener('change', performSearch);
+  sortSelect?.addEventListener('change', performSearch);
+  resetBtn?.addEventListener('click', () => {
+    if (searchInput) searchInput.value = '';
+    if (locationInput) locationInput.value = '';
+    if (categorySelect) categorySelect.value = '';
+    if (sortSelect) sortSelect.value = 'newest';
+    performSearch();
+  });
+
+  // ─── RATINGS SYSTEM ───
+  async function showRestaurantRatings(restaurantId) {
+    try {
+      const res = await fetch(`/api/reviews/restaurant/${restaurantId}`);
+      if (!res.ok) return;
+      const { reviews, stats } = await res.json();
+
+      const html = `
+        <div class="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b border-gray-100 p-6 flex items-center justify-between">
+              <div>
+                <h3 class="text-xl font-bold text-gray-900">⭐ Restaurant Ratings</h3>
+                <p class="text-sm text-gray-500 mt-1">${stats.total_reviews} reviews</p>
+              </div>
+              <button class="close-ratings-modal w-8 h-8 rounded-full hover:bg-gray-100 flex items-center justify-center">&times;</button>
+            </div>
+            <div class="p-6 space-y-4">
+              <div class="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-100">
+                <div class="flex items-center gap-3">
+                  <div class="text-4xl font-bold text-amber-600">${stats.average_rating}</div>
+                  <div>
+                    <div class="text-yellow-400 text-xl">${'⭐'.repeat(Math.round(stats.average_rating))}</div>
+                    <p class="text-xs text-amber-600 font-medium">Average rating from ${stats.total_reviews} NGOs</p>
+                  </div>
+                </div>
+              </div>
+              ${reviews.length > 0 ? reviews.map(r => `
+                <div class="border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition">
+                  <div class="flex items-start justify-between mb-2">
+                    <p class="font-semibold text-gray-900">${r.ngo_name}</p>
+                    <span class="text-yellow-400">${'⭐'.repeat(r.rating)}</span>
+                  </div>
+                  ${r.comment ? `<p class="text-sm text-gray-600">${r.comment}</p>` : ''}
+                  <p class="text-xs text-gray-400 mt-2">${formatRelativeTime(r.created_at)}</p>
+                </div>
+              `).join('') : '<p class="text-center text-gray-400 py-6">No reviews yet. Be the first to rate!</p>'}
+            </div>
+          </div>
+        </div>
+      `;
+
+      const modal = document.createElement('div');
+      modal.innerHTML = html;
+      document.body.appendChild(modal);
+
+      const closeBtn = modal.querySelector('.close-ratings-modal');
+      closeBtn?.addEventListener('click', () => modal.remove());
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+    } catch (e) { console.error('Failed to load ratings:', e); }
+  }
+
+  // Review submission (after delivery completed)
+  async function submitReview(restaurantId, rating, comment) {
+    const token = localStorage.getItem('foodbridge_token');
+    if (!token) { showToast('Please login to submit a review'); return false; }
+
+    try {
+      const res = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ restaurant_id: restaurantId, rating, comment })
+      });
+
+      if (res.ok) {
+        showToast('✅ Review submitted successfully!');
+        return true;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Failed to submit review');
+        return false;
+      }
+    } catch (e) {
+      showToast('Network error submitting review');
+      return false;
+    }
+  }
+
   function filterCards() {
     const q = searchInput?.value.toLowerCase() || '';
     const s = statusSelect?.value || 'all';
@@ -889,8 +1101,8 @@ document.addEventListener('DOMContentLoaded', () => {
       card.style.display = (name.includes(q) && (s === 'all' || status === s)) ? '' : 'none';
     });
   }
-  searchInput?.addEventListener('input', filterCards);
-  statusSelect?.addEventListener('change', filterCards);
+  searchInput?.addEventListener('input', () => { if (!locationInput?.value && !categorySelect?.value) filterCards(); });
+  statusSelect?.addEventListener('change', () => { if (!locationInput?.value && !categorySelect?.value) filterCards(); });
 
   // ─── Toast ───
   /** @param {string} msg */

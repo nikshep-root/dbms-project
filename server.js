@@ -15,6 +15,18 @@ app.use(express.static(__dirname)); // Serve static files like index.html and im
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_foodbridge_key_2026';
 
+// Keep database awake on free tier
+setInterval(async () => {
+    try {
+        const conn = await pool.getConnection();
+        await conn.query('SELECT 1');
+        conn.release();
+        console.log('✓ Keep-alive ping successful');
+    } catch (err) {
+        console.warn('⚠ Keep-alive ping failed:', err.message);
+    }
+}, 4 * 60 * 1000); // Every 4 minutes (before the 30-min timeout)
+
 console.log('Environment variables loaded:');
 console.log('DB_HOST:', process.env.DB_HOST);
 console.log('DB_USER:', process.env.DB_USER);
@@ -110,8 +122,14 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(400).json({ error: 'Invalid role selected.' });
         }
 
-        const [restaurantRows] = await pool.query(`SELECT * FROM Restaurant WHERE email = ?`, [email]);
-        const [ngoRows] = await pool.query(`SELECT * FROM NGO WHERE email = ?`, [email]);
+        let restaurantRows, ngoRows;
+        try {
+            [restaurantRows] = await pool.query(`SELECT * FROM Restaurant WHERE email = ?`, [email]);
+            [ngoRows] = await pool.query(`SELECT * FROM NGO WHERE email = ?`, [email]);
+        } catch (dbErr) {
+            console.error('Database query failed:', dbErr.message);
+            return res.status(503).json({ error: 'Database connection failed. Please try again.' });
+        }
 
         const candidates = [];
         if (restaurantRows.length > 0) candidates.push({ role: 'restaurant', user: restaurantRows[0] });
@@ -604,6 +622,205 @@ app.patch('/api/deliveries/:deliveryId/status', authenticateToken, async (req, r
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'Database error updating delivery status: ' + err.message });
+    }
+});
+
+/* ====================================
+   SEARCH & FILTER ROUTES
+==================================== */
+
+// Search and filter available food (NGO)
+app.get('/api/food/search', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'ngo') return res.status(403).json({ error: 'Unauthorized' });
+    try {
+        const { food_type, location, category, sort_by } = req.query;
+        let query = `
+            SELECT f.listing_id as food_id, f.food_type as food_name, f.quantity, f.pickup_by as expiry_time, 
+                   f.status, f.created_at, f.category,
+                   r.name as restaurant_name, r.location, r.restaurant_id
+            FROM Food_Listing f
+            JOIN Restaurant r ON f.restaurant_id = r.restaurant_id
+            WHERE f.status = 'available' AND (f.pickup_by IS NULL OR f.pickup_by > NOW())
+        `;
+        const params = [];
+
+        if (food_type && food_type.trim()) {
+            query += ` AND f.food_type LIKE ?`;
+            params.push(`%${food_type.trim()}%`);
+        }
+
+        if (location && location.trim()) {
+            query += ` AND r.location LIKE ?`;
+            params.push(`%${location.trim()}%`);
+        }
+
+        if (category && category.trim()) {
+            query += ` AND f.category = ?`;
+            params.push(category.trim());
+        }
+
+        if (sort_by === 'expiry_asc') {
+            query += ` ORDER BY f.pickup_by ASC`;
+        } else if (sort_by === 'newest') {
+            query += ` ORDER BY f.created_at DESC`;
+        } else {
+            query += ` ORDER BY f.created_at DESC`;
+        }
+
+        const [foods] = await pool.query(query, params);
+        res.json({ foods, count: foods.length });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error searching food: ' + err.message });
+    }
+});
+
+// Get all categories (for filter dropdown)
+app.get('/api/categories', async (req, res) => {
+    try {
+        const [categories] = await pool.query(
+            `SELECT DISTINCT category FROM Food_Listing WHERE category IS NOT NULL ORDER BY category ASC`
+        );
+        res.json({ categories: categories.map(c => c.category) });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error fetching categories: ' + err.message });
+    }
+});
+
+/* ====================================
+   RATING & REVIEW ROUTES
+==================================== */
+
+// Submit a review (NGO can review restaurants)
+app.post('/api/reviews', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'ngo') return res.status(403).json({ error: 'Only NGOs can submit reviews' });
+    
+    const { restaurant_id, rating, comment } = req.body;
+    
+    if (!restaurant_id) return res.status(400).json({ error: 'Restaurant ID is required' });
+    if (!rating || rating < 1 || rating > 5) return res.status(400).json({ error: 'Rating must be 1-5' });
+
+    try {
+        // Check if NGO has made at least one request to this restaurant
+        const [requests] = await pool.query(`
+            SELECT COUNT(*) as count FROM Request r
+            JOIN Food_Listing f ON r.listing_id = f.listing_id
+            WHERE r.ngo_id = ? AND f.restaurant_id = ? AND r.status IN ('approved', 'pending')
+            LIMIT 1
+        `, [req.user.id, restaurant_id]);
+
+        if (requests[0].count === 0) {
+            return res.status(403).json({ error: 'You can only review restaurants you have interacted with' });
+        }
+
+        await pool.query(`
+            INSERT INTO Review (ngo_id, restaurant_id, rating, comment)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE rating = ?, comment = ?
+        `, [req.user.id, restaurant_id, rating, comment || null, rating, comment || null]);
+
+        res.status(201).json({ message: 'Review submitted successfully!' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error submitting review: ' + err.message });
+    }
+});
+
+// Get reviews for a restaurant
+app.get('/api/reviews/restaurant/:restaurantId', async (req, res) => {
+    const restaurantId = Number(req.params.restaurantId);
+    
+    try {
+        const [reviews] = await pool.query(`
+            SELECT 
+                rv.review_id,
+                rv.rating,
+                rv.comment,
+                rv.created_at,
+                n.name as ngo_name
+            FROM Review rv
+            JOIN NGO n ON rv.ngo_id = n.ngo_id
+            WHERE rv.restaurant_id = ?
+            ORDER BY rv.created_at DESC
+        `, [restaurantId]);
+
+        // Calculate average rating
+        const [stats] = await pool.query(`
+            SELECT 
+                AVG(rating) as avg_rating,
+                COUNT(*) as total_reviews
+            FROM Review
+            WHERE restaurant_id = ?
+        `, [restaurantId]);
+
+        res.json({
+            reviews,
+            stats: {
+                average_rating: stats[0].avg_rating ? parseFloat(stats[0].avg_rating).toFixed(1) : 0,
+                total_reviews: stats[0].total_reviews
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error fetching reviews: ' + err.message });
+    }
+});
+
+// Get user's own review for a restaurant (if exists)
+app.get('/api/reviews/my-review/:restaurantId', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'ngo') return res.status(403).json({ error: 'Only NGOs can view reviews' });
+    
+    const restaurantId = Number(req.params.restaurantId);
+    
+    try {
+        const [review] = await pool.query(`
+            SELECT review_id, rating, comment, created_at
+            FROM Review
+            WHERE ngo_id = ? AND restaurant_id = ?
+        `, [req.user.id, restaurantId]);
+
+        res.json({ review: review.length > 0 ? review[0] : null });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database error fetching review: ' + err.message });
+    }
+});
+
+/* ====================================
+   AUDIT LOG ROUTES
+==================================== */
+
+// Get audit logs (Admin/System only - limit to authenticated users)
+app.get('/api/audit-logs', authenticateToken, async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 50, 1000);
+        const offset = parseInt(req.query.offset) || 0;
+        const table = req.query.table || null;
+
+        let query = 'SELECT * FROM Audit_Log';
+        const params = [];
+
+        if (table) {
+            query += ' WHERE table_name = ?';
+            params.push(table);
+        }
+
+        query += ' ORDER BY changed_at DESC LIMIT ? OFFSET ?';
+        params.push(limit, offset);
+
+        const [logs] = await pool.query(query, params);
+        const [countResult] = await pool.query('SELECT COUNT(*) as total FROM Audit_Log');
+
+        res.json({
+            logs,
+            total: countResult[0].total,
+            limit,
+            offset
+        });
+    } catch (err) {
+        console.error('Audit log error:', err);
+        res.status(500).json({ error: 'Database error fetching audit logs.' });
     }
 });
 

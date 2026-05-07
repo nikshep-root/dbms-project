@@ -8,6 +8,7 @@ CREATE DATABASE IF NOT EXISTS foodbridge;
 USE foodbridge;
 
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS Review;
 DROP TABLE IF EXISTS Delivery;
 DROP TABLE IF EXISTS Request;
 DROP TABLE IF EXISTS Food_Listing;
@@ -116,6 +117,94 @@ CREATE TABLE IF NOT EXISTS Audit_Log (
         changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         who VARCHAR(100) DEFAULT NULL,
         payload JSON DEFAULT NULL
+);
+
+-- ============================================================
+-- TRIGGERS FOR AUDIT LOGGING
+-- ============================================================
+
+-- Food_Listing Insert Trigger
+DELIMITER $$
+CREATE TRIGGER tr_food_listing_insert AFTER INSERT ON Food_Listing
+FOR EACH ROW
+BEGIN
+    INSERT INTO Audit_Log (table_name, row_id, action, who, payload)
+    VALUES ('Food_Listing', NEW.food_id, 'INSERT', 'SYSTEM', 
+            JSON_OBJECT('food_name', NEW.food_name, 'quantity', NEW.quantity, 'status', NEW.status));
+END$$
+DELIMITER ;
+
+-- Food_Listing Update Trigger
+DELIMITER $$
+CREATE TRIGGER tr_food_listing_update AFTER UPDATE ON Food_Listing
+FOR EACH ROW
+BEGIN
+    INSERT INTO Audit_Log (table_name, row_id, action, who, payload)
+    VALUES ('Food_Listing', NEW.food_id, 'UPDATE', 'SYSTEM',
+            JSON_OBJECT('old_status', OLD.status, 'new_status', NEW.status));
+END$$
+DELIMITER ;
+
+-- Request Insert Trigger
+DELIMITER $$
+CREATE TRIGGER tr_request_insert AFTER INSERT ON Request
+FOR EACH ROW
+BEGIN
+    INSERT INTO Audit_Log (table_name, row_id, action, who, payload)
+    VALUES ('Request', NEW.request_id, 'INSERT', 'SYSTEM',
+            JSON_OBJECT('ngo_id', NEW.ngo_id, 'food_id', NEW.food_id, 'status', NEW.status));
+END$$
+DELIMITER ;
+
+-- Request Update Trigger
+DELIMITER $$
+CREATE TRIGGER tr_request_update AFTER UPDATE ON Request
+FOR EACH ROW
+BEGIN
+    INSERT INTO Audit_Log (table_name, row_id, action, who, payload)
+    VALUES ('Request', NEW.request_id, 'UPDATE', 'SYSTEM',
+            JSON_OBJECT('old_status', OLD.status, 'new_status', NEW.status, 'remarks', NEW.remarks));
+END$$
+DELIMITER ;
+
+-- Delivery Insert Trigger
+DELIMITER $$
+CREATE TRIGGER tr_delivery_insert AFTER INSERT ON Delivery
+FOR EACH ROW
+BEGIN
+    INSERT INTO Audit_Log (table_name, row_id, action, who, payload)
+    VALUES ('Delivery', NEW.delivery_id, 'INSERT', 'SYSTEM',
+            JSON_OBJECT('request_id', NEW.request_id, 'delivery_agent', NEW.delivery_agent));
+END$$
+DELIMITER ;
+
+-- Delivery Update Trigger
+DELIMITER $$
+CREATE TRIGGER tr_delivery_update AFTER UPDATE ON Delivery
+FOR EACH ROW
+BEGIN
+    INSERT INTO Audit_Log (table_name, row_id, action, who, payload)
+    VALUES ('Delivery', NEW.delivery_id, 'UPDATE', 'SYSTEM',
+            JSON_OBJECT('old_status', OLD.delivery_status, 'new_status', NEW.delivery_status));
+END$$
+DELIMITER ;
+
+-- ──────────────────────────────────────────────
+-- 6. REVIEW (Ratings for restaurants by NGOs)
+--    FK: ngo_id → NGO (1:M)
+--    FK: restaurant_id → Restaurant (1:M)
+-- ──────────────────────────────────────────────
+CREATE TABLE Review (
+    review_id       INT             AUTO_INCREMENT PRIMARY KEY,
+    ngo_id          INT             NOT NULL,
+    restaurant_id   INT             NOT NULL,
+    rating          INT             NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment         TEXT,
+    created_at      TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (ngo_id)        REFERENCES NGO(ngo_id)        ON DELETE CASCADE,
+    FOREIGN KEY (restaurant_id) REFERENCES Restaurant(restaurant_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_review (ngo_id, restaurant_id)
 );
 
 -- Request triggers

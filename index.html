@@ -850,30 +850,37 @@
 
             <!-- ============ BROWSE FOOD (NGO) ============ -->
             <section id="page-browse-food" class="page hidden p-6 md:p-8 animate-fade-in">
-                <div class="flex flex-col sm:flex-row gap-3 mb-8">
-                    <div class="relative flex-1">
-                        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none"
-                            stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        <input id="browseSearch" type="text" placeholder="Search food items…"
-                            class="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
+                <!-- Filters -->
+                <div class="mb-8 p-6 bg-white rounded-2xl border border-gray-100">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">🔍 Search & Filter</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+                        <div class="relative">
+                            <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none"
+                                stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <input id="browseSearch" type="text" placeholder="Search food…"
+                                class="w-full pl-11 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
+                        </div>
+                        <input id="locationFilter" type="text" placeholder="Location…"
+                            class="px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition" />
+                        <select id="categoryFilter"
+                            class="px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition">
+                            <option value="">All Categories</option>
+                        </select>
+                        <select id="sortFilter"
+                            class="px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition">
+                            <option value="newest">Newest First</option>
+                            <option value="expiry_asc">Expires Soonest</option>
+                        </select>
+                        <button id="resetFiltersBtn"
+                            class="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 transition">
+                            Reset Filters
+                        </button>
                     </div>
-                    <select id="statusFilter"
-                        class="px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition min-w-[150px]">
-                        <option value="all">All Status</option>
-                        <option value="available">Available</option>
-                        <option value="pending">Pending</option>
-                        <option value="allocated">Allocated</option>
-                        <option value="expired">Expired</option>
-                    </select>
-                    <select id="expirySort"
-                        class="px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition min-w-[160px]">
-                        <option value="soonest">Pickup By: Soonest</option>
-                        <option value="latest">Pickup By: Latest</option>
-                    </select>
                 </div>
+                <!-- Results -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5" id="foodGrid">
                     <!-- JS will populate -->
                 </div>
