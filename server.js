@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const path = require('path');
 require('dotenv').config();
+const emailService = require('./emailService');
 
 const app = express();
 app.use(express.json());
@@ -359,6 +360,20 @@ app.post('/api/food-listings', authenticateToken, async (req, res) => {
             `INSERT INTO Food_Listing (restaurant_id, food_type, quantity, pickup_by, status) VALUES (?, ?, ?, ?, 'available')`,
             [req.user.id, String(food_name).trim(), qtyNumeric, expiry_time]
         );
+
+        // Send confirmation email to restaurant
+        const [restaurantData] = await pool.query(`SELECT email, restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [req.user.id]);
+        if (restaurantData.length > 0) {
+            const restaurant = restaurantData[0];
+            emailService.sendFoodListingConfirmationEmail(
+                restaurant.email,
+                restaurant.restaurant_name,
+                String(food_name).trim(),
+                quantity,
+                expiry_time
+            );
+        }
+
         res.json({ message: 'Listing created successfully!' });
     } catch (err) {
         console.error('Error creating listing:', err);
@@ -405,6 +420,16 @@ app.post('/api/requests', authenticateToken, async (req, res) => {
     if (req.user.role !== 'ngo') return res.status(403).json({ error: 'Unauthorized' });
     const { food_id } = req.body; // food_id is actually listing_id
     try {
+        // Get food and restaurant details before updating
+        const [foodData] = await pool.query(
+            `SELECT restaurant_id, food_type, quantity FROM Food_Listing WHERE listing_id = ? AND status = 'available'`,
+            [food_id]
+        );
+
+        if (foodData.length === 0) {
+            return res.status(404).json({ error: 'Food listing not found or already requested.' });
+        }
+
         await pool.query(
             `UPDATE Food_Listing SET status = 'requested' WHERE listing_id = ? AND status = 'available'`,
             [food_id]
@@ -413,6 +438,21 @@ app.post('/api/requests', authenticateToken, async (req, res) => {
             `INSERT INTO Request (listing_id, ngo_id, status) VALUES (?, ?, 'pending')`,
             [food_id, req.user.id]
         );
+
+        // Send notification email to restaurant
+        const [restaurantData] = await pool.query(`SELECT email, restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [foodData[0].restaurant_id]);
+        const [ngoData] = await pool.query(`SELECT ngo_name FROM NGO WHERE ngo_id = ?`, [req.user.id]);
+        
+        if (restaurantData.length > 0 && ngoData.length > 0) {
+            emailService.sendNewRequestNotificationEmail(
+                restaurantData[0].email,
+                restaurantData[0].restaurant_name,
+                ngoData[0].ngo_name,
+                foodData[0].food_type,
+                foodData[0].quantity
+            );
+        }
+
         res.json({ message: 'Food requested successfully!' });
     } catch (err) {
         console.error(err);
@@ -483,7 +523,7 @@ app.patch('/api/requests/:requestId/decision', authenticateToken, async (req, re
         await conn.beginTransaction();
 
         const [rows] = await conn.query(`
-            SELECT r.request_id, r.status, r.listing_id, f.restaurant_id
+            SELECT r.request_id, r.status, r.listing_id, r.ngo_id, f.restaurant_id, f.food_type
             FROM Request r
             JOIN Food_Listing f ON r.listing_id = f.listing_id
             WHERE r.request_id = ?
@@ -506,6 +546,10 @@ app.patch('/api/requests/:requestId/decision', authenticateToken, async (req, re
             return res.status(400).json({ error: 'Only pending requests can be updated.' });
         }
 
+        // Get NGO and restaurant details for email
+        const [ngoData] = await conn.query(`SELECT email, ngo_name FROM NGO WHERE ngo_id = ?`, [requestRow.ngo_id]);
+        const [restaurantData] = await conn.query(`SELECT restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [requestRow.restaurant_id]);
+
         if (action === 'approve') {
             await conn.query(`UPDATE Request SET status = 'approved' WHERE request_id = ?`, [requestId]);
             await conn.query(`UPDATE Food_Listing SET status = 'allocated' WHERE listing_id = ?`, [requestRow.listing_id]);
@@ -515,9 +559,31 @@ app.patch('/api/requests/:requestId/decision', authenticateToken, async (req, re
                 VALUES (?, 'pending')
                 ON DUPLICATE KEY UPDATE status = VALUES(status)
             `, [requestId]);
+
+            // Send approval email
+            if (ngoData.length > 0) {
+                const ngo = ngoData[0];
+                emailService.sendRequestApprovedEmail(
+                    ngo.email,
+                    ngo.ngo_name,
+                    requestRow.food_type,
+                    restaurantData[0].restaurant_name
+                );
+            }
         } else {
             await conn.query(`UPDATE Request SET status = 'rejected' WHERE request_id = ?`, [requestId]);
             await conn.query(`UPDATE Food_Listing SET status = 'available' WHERE listing_id = ?`, [requestRow.listing_id]);
+
+            // Send rejection email
+            if (ngoData.length > 0) {
+                const ngo = ngoData[0];
+                emailService.sendRequestRejectedEmail(
+                    ngo.email,
+                    ngo.ngo_name,
+                    requestRow.food_type,
+                    restaurantData[0].restaurant_name
+                );
+            }
         }
 
         await conn.commit();
@@ -600,7 +666,7 @@ app.patch('/api/deliveries/:deliveryId/status', authenticateToken, async (req, r
 
     try {
         const [rows] = await pool.query(`
-            SELECT d.delivery_id, f.restaurant_id
+            SELECT d.delivery_id, f.restaurant_id, r.ngo_id, f.food_type
             FROM Delivery d
             JOIN Request r ON d.request_id = r.request_id
             JOIN Food_Listing f ON r.listing_id = f.listing_id
@@ -617,6 +683,23 @@ app.patch('/api/deliveries/:deliveryId/status', authenticateToken, async (req, r
         }
 
         await pool.query(`UPDATE Delivery SET status = ? WHERE delivery_id = ?`, [statusLower, deliveryId]);
+
+        // Send delivery status update email
+        if (['in transit', 'delivered'].includes(statusLower)) {
+            const [ngoData] = await pool.query(`SELECT email, ngo_name FROM NGO WHERE ngo_id = ?`, [rows[0].ngo_id]);
+            const [restaurantData] = await pool.query(`SELECT restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [rows[0].restaurant_id]);
+            
+            if (ngoData.length > 0) {
+                const ngo = ngoData[0];
+                emailService.sendDeliveryUpdateEmail(
+                    ngo.email,
+                    ngo.ngo_name,
+                    rows[0].food_type,
+                    restaurantData[0].restaurant_name,
+                    statusLower
+                );
+            }
+        }
 
         return res.json({ message: 'Delivery status updated successfully.' });
     } catch (err) {
