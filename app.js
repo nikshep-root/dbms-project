@@ -1754,11 +1754,11 @@ document.addEventListener('DOMContentLoaded', () => {
           userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
           initMapWithLocation(userLocation);
         }, () => {
-          // Fallback to Bangalore if geolocation denied
-          initMapWithLocation({ lat: 28.6139, lon: 77.2090 });
+          // Fallback to Mysore if geolocation denied
+          initMapWithLocation({ lat: 12.2958, lon: 76.6394 });
         });
       } else {
-        initMapWithLocation({ lat: 28.6139, lon: 77.2090 });
+        initMapWithLocation({ lat: 12.2958, lon: 76.6394 });
       }
     } catch (err) {
       console.error('Map init error:', err);
@@ -1769,7 +1769,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (foodbridgeMap) return;
 
     // @ts-ignore
-    foodbridgeMap = L.map('foodbridgeMap').setView([location.lat, location.lon], 13);
+    foodbridgeMap = L.map('foodbridgeMap').setView([location.lat, location.lon], 12);
     
     // @ts-ignore
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
