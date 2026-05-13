@@ -4,13 +4,6 @@
     {
       "src": "api/index.js",
       "use": "@vercel/node"
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "."
-      }
     }
   ],
   "routes": [
@@ -22,15 +15,6 @@
       "src": "/(.*)",
       "dest": "index.html"
     }
-  ],
-  "env": {
-    "DB_HOST": "@db_host",
-    "DB_PORT": "@db_port",
-    "DB_USER": "@db_user",
-    "DB_PASSWORD": "@db_password",
-    "DB_NAME": "@db_name",
-    "JWT_SECRET": "@jwt_secret",
-    "EMAIL_USER": "@email_user",
-    "EMAIL_PASSWORD": "@email_password"
-  }
+  ]
 }
+
