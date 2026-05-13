@@ -43,6 +43,21 @@
         }
     </script>
     <link rel="stylesheet" href="styles.css" />
+    <!-- Leaflet Map Library -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <!-- Leaflet Marker Clustering -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.min.js"></script>
+    <style>
+        #foodbridgeMap { height: 500px; border-radius: 1.5rem; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+        .leaflet-container { font-family: inherit; }
+        .leaflet-popup-content { font-size: 14px; }
+        .marker-restaurant { background-color: #10b981; }
+        .marker-ngo { background-color: #3b82f6; }
+        .marker-delivery { background-color: #f97316; }
+    </style>
 </head>
 
 <body class="font-sans text-gray-800 antialiased">
@@ -713,6 +728,33 @@
                     <!-- Stats (Dynamic Based on Role) -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6" id="dashboardStatsGrid">
                         <!-- Stats will be populated via app.js depending on role -->
+                    </div>
+
+                    <!-- Map Section - View Nearby Restaurants & NGOs -->
+                    <div class="bg-white/70 backdrop-blur-3xl rounded-3xl border border-white p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_40px_rgb(0,0,0,0.08)] transition-all duration-500">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h3 class="text-xl font-bold text-gray-900 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">📍 Location Map</h3>
+                                <p class="text-sm text-gray-500 mt-1">Find nearby restaurants and NGOs</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button id="filterRestaurants" class="px-4 py-2 rounded-lg bg-brand-50 text-brand-600 font-semibold text-sm hover:bg-brand-100 transition" data-type="restaurants">🍲 Restaurants</button>
+                                <button id="filterNGOs" class="px-4 py-2 rounded-lg bg-blue-50 text-blue-600 font-semibold text-sm hover:bg-blue-100 transition" data-type="ngos">🤝 NGOs</button>
+                                <button id="filterAll" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 font-semibold text-sm hover:bg-slate-200 transition" data-type="all">📍 All</button>
+                            </div>
+                        </div>
+                        <div id="foodbridgeMap" class="w-full mb-4"></div>
+                        <div id="mapStats" class="grid grid-cols-3 gap-4 text-center">
+                            <div class="p-3 bg-brand-50 rounded-lg">
+                                <p class="text-sm font-semibold text-brand-700">Nearby Restaurants: <span id="stat-restaurants" class="text-lg font-bold">0</span></p>
+                            </div>
+                            <div class="p-3 bg-blue-50 rounded-lg">
+                                <p class="text-sm font-semibold text-blue-700">Nearby NGOs: <span id="stat-ngos" class="text-lg font-bold">0</span></p>
+                            </div>
+                            <div class="p-3 bg-amber-50 rounded-lg">
+                                <p class="text-sm font-semibold text-amber-700">Avg Distance: <span id="stat-distance" class="text-lg font-bold">—</span></p>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Activity + Quick Actions -->

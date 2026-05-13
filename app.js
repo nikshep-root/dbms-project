@@ -1739,6 +1739,198 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ─── GEOLOCATION MAP FUNCTIONS ───
+  let foodbridgeMap = null;
+  let markers = { restaurants: [], ngos: [], deliveries: [] };
+  let userLocation = null;
+
+  async function initializeMap() {
+    if (foodbridgeMap) return;
+
+    try {
+      // Get user's location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          initMapWithLocation(userLocation);
+        }, () => {
+          // Fallback to Bangalore if geolocation denied
+          initMapWithLocation({ lat: 28.6139, lon: 77.2090 });
+        });
+      } else {
+        initMapWithLocation({ lat: 28.6139, lon: 77.2090 });
+      }
+    } catch (err) {
+      console.error('Map init error:', err);
+    }
+  }
+
+  function initMapWithLocation(location) {
+    if (foodbridgeMap) return;
+
+    // @ts-ignore
+    foodbridgeMap = L.map('foodbridgeMap').setView([location.lat, location.lon], 13);
+    
+    // @ts-ignore
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(foodbridgeMap);
+
+    // User marker
+    // @ts-ignore
+    L.circleMarker([location.lat, location.lon], {
+      radius: 8,
+      fillColor: '#10b981',
+      color: '#059669',
+      weight: 3,
+      opacity: 1,
+      fillOpacity: 0.8
+    }).addTo(foodbridgeMap).bindPopup('<b>📍 Your Location</b><br/>You are here');
+
+    loadMapMarkers();
+  }
+
+  async function loadMapMarkers() {
+    if (!foodbridgeMap) return;
+
+    const token = localStorage.getItem('foodbridge_token');
+    if (!token) return;
+
+    try {
+      // Get user's location for distance calc
+      if (!userLocation && navigator.geolocation) {
+        userLocation = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+            () => reject()
+          );
+        });
+      }
+
+      // Fetch nearby restaurants and NGOs
+      const nearby = await fetch('/api/nearby-restaurants', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(r => r.json());
+
+      // Clear old markers
+      markers.restaurants.forEach(m => m.remove?.());
+      markers.ngos.forEach(m => m.remove?.());
+      markers.restaurants = [];
+      markers.ngos = [];
+
+      // Add restaurant markers
+      (nearby.restaurants || []).forEach(restaurant => {
+        if (restaurant.latitude && restaurant.longitude) {
+          // @ts-ignore
+          const marker = L.marker([restaurant.latitude, restaurant.longitude], {
+            icon: L.divIcon({
+              className: 'marker-restaurant',
+              html: '🍽️',
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
+            })
+          }).addTo(foodbridgeMap);
+
+          const distance = userLocation ? 
+            calculateDistance(userLocation.lat, userLocation.lon, restaurant.latitude, restaurant.longitude) : 'N/A';
+
+          marker.bindPopup(`
+            <div class="p-2">
+              <b>${restaurant.name}</b><br/>
+              📍 ${restaurant.location || 'Location unknown'}<br/>
+              ${distance !== 'N/A' ? `📏 ${distance.toFixed(1)} km away` : ''}<br/>
+              <small>${restaurant.active ? '✅ Active' : '❌ Inactive'}</small>
+            </div>
+          `);
+
+          markers.restaurants.push(marker);
+        }
+      });
+
+      // Add NGO markers
+      (nearby.ngos || []).forEach(ngo => {
+        if (ngo.latitude && ngo.longitude) {
+          // @ts-ignore
+          const marker = L.marker([ngo.latitude, ngo.longitude], {
+            icon: L.divIcon({
+              className: 'marker-ngo',
+              html: '🤝',
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
+            })
+          }).addTo(foodbridgeMap);
+
+          const distance = userLocation ?
+            calculateDistance(userLocation.lat, userLocation.lon, ngo.latitude, ngo.longitude) : 'N/A';
+
+          marker.bindPopup(`
+            <div class="p-2">
+              <b>${ngo.name}</b><br/>
+              📍 ${ngo.location || 'Location unknown'}<br/>
+              ${distance !== 'N/A' ? `📏 ${distance.toFixed(1)} km away` : ''}<br/>
+              <small>${ngo.verified ? '✅ Verified' : '⏳ Pending'}</small>
+            </div>
+          `);
+
+          markers.ngos.push(marker);
+        }
+      });
+
+      // Update stats
+      document.getElementById('stat-restaurants').textContent = markers.restaurants.length;
+      document.getElementById('stat-ngos').textContent = markers.ngos.length;
+
+      const avgDist = markers.restaurants.length > 0 ? 
+        (markers.restaurants.reduce((acc, m) => {
+          const latlng = m.getLatLng();
+          return acc + calculateDistance(userLocation.lat, userLocation.lon, latlng.lat, latlng.lng);
+        }, 0) / markers.restaurants.length).toFixed(1) : '—';
+
+      document.getElementById('stat-distance').textContent = avgDist + ' km';
+
+    } catch (err) {
+      console.error('Map marker load error:', err);
+    }
+  }
+
+  function filterMapMarkers(type) {
+    if (type === 'restaurants') {
+      markers.ngos.forEach(m => m.remove?.());
+    } else if (type === 'ngos') {
+      markers.restaurants.forEach(m => m.remove?.());
+    }
+    // 'all' shows all markers
+  }
+
+  // Calculate Haversine distance
+  function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth radius in km
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  // Map filter buttons
+  document.getElementById('filterRestaurants')?.addEventListener('click', () => {
+    filterMapMarkers('restaurants');
+  });
+
+  document.getElementById('filterNGOs')?.addEventListener('click', () => {
+    filterMapMarkers('ngos');
+  });
+
+  document.getElementById('filterAll')?.addEventListener('click', () => {
+    loadMapMarkers();
+  });
+
+  // Initialize map when dashboard loads
+  setTimeout(() => initializeMap(), 1500);
+
   restoreSessionFromStorage();
 
 });
