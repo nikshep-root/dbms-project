@@ -95,6 +95,18 @@ app.post('/api/auth/register', async (req, res) => {
         const query = `INSERT INTO ${table} (name, location, contact, email, password) VALUES (?, ?, ?, ?, ?)`;
         const [result] = await pool.query(query, [name.trim(), location.trim(), contact.trim(), email.trim(), hashedPassword]);
 
+        // Automatically geocode their location in the background
+        const insertId = result.insertId;
+        const idColumn = role === 'restaurant' ? 'restaurant_id' : 'ngo_id';
+        geolocationService.geocodeAddress(location.trim())
+            .then(async (coords) => {
+                await pool.query(
+                    `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
+                    [coords.latitude, coords.longitude, insertId]
+                );
+            })
+            .catch(err => console.error(`Background geocoding failed for new ${role}:`, err.message));
+
         const token = jwt.sign(
             { id: result.insertId, role, name: name.trim() },
             JWT_SECRET,
