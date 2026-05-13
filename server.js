@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const path = require('path');
 require('dotenv').config();
 const emailService = require('./emailService');
+const geolocationService = require('./geolocationService');
 
 const app = express();
 app.use(express.json());
@@ -904,6 +905,369 @@ app.get('/api/audit-logs', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Audit log error:', err);
         res.status(500).json({ error: 'Database error fetching audit logs.' });
+    }
+});
+
+/* ====================================
+   GEOLOCATION ROUTES (NEW)
+==================================== */
+
+// GEOCODE ADDRESS - Convert address to coordinates
+app.post('/api/geolocation/geocode', async (req, res) => {
+    const { address } = req.body;
+
+    try {
+        if (!address || address.trim() === '') {
+            return res.status(400).json({ error: 'Address is required' });
+        }
+
+        // Try to get from cache first
+        const [cached] = await pool.query(
+            'SELECT latitude, longitude FROM Geolocation_Cache WHERE address = ?',
+            [address.trim()]
+        );
+
+        if (cached.length > 0) {
+            return res.json({
+                source: 'cache',
+                address,
+                latitude: cached[0].latitude,
+                longitude: cached[0].longitude
+            });
+        }
+
+        // Geocode using Nominatim API
+        const result = await geolocationService.geocodeAddress(address);
+
+        // Cache the result
+        await pool.query(
+            'INSERT INTO Geolocation_Cache (address, latitude, longitude) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE cached_at = NOW()',
+            [address.trim(), result.latitude, result.longitude]
+        );
+
+        res.json({
+            source: 'nominatim',
+            address: result.display_name,
+            latitude: result.latitude,
+            longitude: result.longitude,
+            display_name: result.display_name
+        });
+    } catch (error) {
+        console.error('Geocoding error:', error);
+        res.status(500).json({ error: error.message || 'Failed to geocode address' });
+    }
+});
+
+// UPDATE RESTAURANT LOCATION - Store coordinates for restaurant
+app.put('/api/restaurant/:id/location', authenticateToken, async (req, res) => {
+    const { latitude, longitude, address } = req.body;
+    const restaurantId = req.params.id;
+
+    try {
+        // Validate coordinates
+        if (!geolocationService.isValidCoordinates(latitude, longitude)) {
+            return res.status(400).json({ error: 'Invalid coordinates provided' });
+        }
+
+        // Update restaurant with coordinates
+        const query = `
+            UPDATE Restaurant 
+            SET latitude = ?, longitude = ?, address_geocoded = ?
+            WHERE restaurant_id = ?
+        `;
+
+        const [result] = await pool.query(query, [latitude, longitude, address || '', restaurantId]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Restaurant not found' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Location updated successfully',
+            restaurantId,
+            latitude,
+            longitude,
+            mapsLink: geolocationService.getOpenStreetMapLink(latitude, longitude)
+        });
+    } catch (error) {
+        console.error('Error updating restaurant location:', error);
+        res.status(500).json({ error: 'Failed to update location' });
+    }
+});
+
+// UPDATE NGO LOCATION - Store coordinates for NGO
+app.put('/api/ngo/:id/location', authenticateToken, async (req, res) => {
+    const { latitude, longitude, address } = req.body;
+    const ngoId = req.params.id;
+
+    try {
+        // Validate coordinates
+        if (!geolocationService.isValidCoordinates(latitude, longitude)) {
+            return res.status(400).json({ error: 'Invalid coordinates provided' });
+        }
+
+        // Update NGO with coordinates
+        const query = `
+            UPDATE NGO 
+            SET latitude = ?, longitude = ?, address_geocoded = ?
+            WHERE ngo_id = ?
+        `;
+
+        const [result] = await pool.query(query, [latitude, longitude, address || '', ngoId]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'NGO not found' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Location updated successfully',
+            ngoId,
+            latitude,
+            longitude,
+            mapsLink: geolocationService.getOpenStreetMapLink(latitude, longitude)
+        });
+    } catch (error) {
+        console.error('Error updating NGO location:', error);
+        res.status(500).json({ error: 'Failed to update location' });
+    }
+});
+
+// GET NEARBY RESTAURANTS - Find restaurants near an NGO
+app.get('/api/nearby/restaurants', authenticateToken, async (req, res) => {
+    const { latitude, longitude, radius = 5 } = req.query;
+
+    try {
+        if (!latitude || !longitude) {
+            return res.status(400).json({ error: 'Latitude and longitude are required' });
+        }
+
+        const lat = parseFloat(latitude);
+        const lon = parseFloat(longitude);
+        const radiusKm = parseFloat(radius);
+
+        if (!geolocationService.isValidCoordinates(lat, lon)) {
+            return res.status(400).json({ error: 'Invalid coordinates' });
+        }
+
+        if (radiusKm <= 0 || radiusKm > 50) {
+            return res.status(400).json({ error: 'Radius must be between 0 and 50 km' });
+        }
+
+        // Get all restaurants with coordinates
+        const [restaurants] = await pool.query(`
+            SELECT restaurant_id, name, location, contact, latitude, longitude, 
+                   COUNT(food_id) as active_listings
+            FROM Restaurant 
+            LEFT JOIN Food_Listing ON Restaurant.restaurant_id = Food_Listing.restaurant_id 
+                AND Food_Listing.status = 'Available'
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            GROUP BY restaurant_id
+        `);
+
+        // Calculate distances and filter
+        const nearby = geolocationService.findNearbyLocations(
+            restaurants,
+            lat,
+            lon,
+            radiusKm
+        ).map(r => ({
+            ...r,
+            estimated_delivery_time_minutes: geolocationService.estimateDeliveryTime(r.distance)
+        }));
+
+        res.json({
+            center: { latitude: lat, longitude: lon },
+            radius_km: radiusKm,
+            total_nearby: nearby.length,
+            restaurants: nearby
+        });
+    } catch (error) {
+        console.error('Error finding nearby restaurants:', error);
+        res.status(500).json({ error: 'Failed to find nearby restaurants' });
+    }
+});
+
+// GET NEARBY NGOS - Find NGOs near a restaurant
+app.get('/api/nearby/ngos', authenticateToken, async (req, res) => {
+    const { latitude, longitude, radius = 5 } = req.query;
+
+    try {
+        if (!latitude || !longitude) {
+            return res.status(400).json({ error: 'Latitude and longitude are required' });
+        }
+
+        const lat = parseFloat(latitude);
+        const lon = parseFloat(longitude);
+        const radiusKm = parseFloat(radius);
+
+        if (!geolocationService.isValidCoordinates(lat, lon)) {
+            return res.status(400).json({ error: 'Invalid coordinates' });
+        }
+
+        if (radiusKm <= 0 || radiusKm > 50) {
+            return res.status(400).json({ error: 'Radius must be between 0 and 50 km' });
+        }
+
+        // Get all NGOs with coordinates
+        const [ngos] = await pool.query(`
+            SELECT ngo_id, name, location, contact, latitude, longitude,
+                   COUNT(request_id) as pending_requests
+            FROM NGO 
+            LEFT JOIN Request ON NGO.ngo_id = Request.ngo_id 
+                AND Request.status = 'Pending'
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            GROUP BY ngo_id
+        `);
+
+        // Calculate distances and filter
+        const nearby = geolocationService.findNearbyLocations(
+            ngos,
+            lat,
+            lon,
+            radiusKm
+        ).map(n => ({
+            ...n,
+            estimated_delivery_time_minutes: geolocationService.estimateDeliveryTime(n.distance)
+        }));
+
+        res.json({
+            center: { latitude: lat, longitude: lon },
+            radius_km: radiusKm,
+            total_nearby: nearby.length,
+            ngos: nearby
+        });
+    } catch (error) {
+        console.error('Error finding nearby NGOs:', error);
+        res.status(500).json({ error: 'Failed to find nearby NGOs' });
+    }
+});
+
+// GET DISTANCE BETWEEN TWO LOCATIONS
+app.get('/api/geolocation/distance', async (req, res) => {
+    const { lat1, lon1, lat2, lon2 } = req.query;
+
+    try {
+        if (!lat1 || !lon1 || !lat2 || !lon2) {
+            return res.status(400).json({ error: 'All coordinates are required' });
+        }
+
+        const latitude1 = parseFloat(lat1);
+        const longitude1 = parseFloat(lon1);
+        const latitude2 = parseFloat(lat2);
+        const longitude2 = parseFloat(lon2);
+
+        if (!geolocationService.isValidCoordinates(latitude1, longitude1) || 
+            !geolocationService.isValidCoordinates(latitude2, longitude2)) {
+            return res.status(400).json({ error: 'Invalid coordinates' });
+        }
+
+        const distance = geolocationService.calculateDistance(
+            latitude1, longitude1,
+            latitude2, longitude2
+        );
+
+        const deliveryTime = geolocationService.estimateDeliveryTime(distance);
+
+        res.json({
+            from: { latitude: latitude1, longitude: longitude1 },
+            to: { latitude: latitude2, longitude: longitude2 },
+            distance_km: distance,
+            estimated_delivery_time_minutes: deliveryTime
+        });
+    } catch (error) {
+        console.error('Error calculating distance:', error);
+        res.status(500).json({ error: 'Failed to calculate distance' });
+    }
+});
+
+// ADD DELIVERY LOCATION HISTORY - Track delivery route
+app.post('/api/delivery/:deliveryId/location', authenticateToken, async (req, res) => {
+    const { latitude, longitude } = req.body;
+    const { deliveryId } = req.params;
+
+    try {
+        if (!geolocationService.isValidCoordinates(latitude, longitude)) {
+            return res.status(400).json({ error: 'Invalid coordinates' });
+        }
+
+        // Verify delivery exists
+        const [delivery] = await pool.query(
+            'SELECT delivery_id FROM Delivery WHERE delivery_id = ?',
+            [deliveryId]
+        );
+
+        if (delivery.length === 0) {
+            return res.status(404).json({ error: 'Delivery not found' });
+        }
+
+        // Record location history
+        const [result] = await pool.query(
+            `INSERT INTO Location_History (delivery_id, latitude, longitude) 
+             VALUES (?, ?, ?)`,
+            [deliveryId, latitude, longitude]
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'Location recorded',
+            location_id: result.insertId,
+            deliveryId,
+            latitude,
+            longitude,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Error recording delivery location:', error);
+        res.status(500).json({ error: 'Failed to record location' });
+    }
+});
+
+// GET DELIVERY ROUTE HISTORY - Show all locations for a delivery
+app.get('/api/delivery/:deliveryId/route', authenticateToken, async (req, res) => {
+    const { deliveryId } = req.params;
+
+    try {
+        const [locations] = await pool.query(
+            `SELECT location_id, latitude, longitude, timestamp 
+             FROM Location_History 
+             WHERE delivery_id = ? 
+             ORDER BY timestamp ASC`,
+            [deliveryId]
+        );
+
+        if (locations.length === 0) {
+            return res.json({
+                deliveryId,
+                message: 'No location history yet',
+                locations: []
+            });
+        }
+
+        // Calculate total distance traveled
+        let totalDistance = 0;
+        for (let i = 1; i < locations.length; i++) {
+            totalDistance += geolocationService.calculateDistance(
+                locations[i - 1].latitude,
+                locations[i - 1].longitude,
+                locations[i].latitude,
+                locations[i].longitude
+            );
+        }
+
+        res.json({
+            deliveryId,
+            total_points: locations.length,
+            total_distance_km: totalDistance.toFixed(2),
+            locations: locations.map(loc => ({
+                ...loc,
+                coordinates: `${loc.latitude},${loc.longitude}`
+            }))
+        });
+    } catch (error) {
+        console.error('Error fetching delivery route:', error);
+        res.status(500).json({ error: 'Failed to fetch delivery route' });
     }
 });
 
