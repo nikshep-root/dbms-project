@@ -259,6 +259,16 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
             [name.trim(), email.trim(), location.trim(), contact.trim(), id]
         );
 
+        // Automatically geocode the new location in the background
+        geolocationService.geocodeAddress(location.trim())
+            .then(async (coords) => {
+                await pool.query(
+                    `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
+                    [coords.latitude, coords.longitude, id]
+                );
+            })
+            .catch(err => console.error('Background geocoding failed for profile update:', err.message));
+
         res.json({
             message: 'Profile updated successfully',
             profile: { name: name.trim(), email: email.trim(), location: location.trim(), contact: contact.trim(), role }
