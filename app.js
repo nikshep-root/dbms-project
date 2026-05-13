@@ -1363,6 +1363,13 @@ document.addEventListener('DOMContentLoaded', () => {
       payload.location = $('authLocation').value;
       // @ts-ignore
       payload.contact = $('authContact').value;
+      
+      const authLat = $('authLat')?.value;
+      const authLon = $('authLon')?.value;
+      if (authLat && authLon) {
+        payload.latitude = parseFloat(authLat);
+        payload.longitude = parseFloat(authLon);
+      }
     }
 
     try {
@@ -1481,6 +1488,13 @@ document.addEventListener('DOMContentLoaded', () => {
       location: $('editProfileLocation').value.trim(),
       contact: $('editProfileContact').value.trim(),
     };
+    
+    const editLat = $('editLat')?.value;
+    const editLon = $('editLon')?.value;
+    if (editLat && editLon) {
+      payload.latitude = parseFloat(editLat);
+      payload.longitude = parseFloat(editLon);
+    }
 
     const saveBtn = $('saveProfileBtn');
     if (saveBtn) {
@@ -1938,9 +1952,91 @@ document.addEventListener('DOMContentLoaded', () => {
     loadMapMarkers();
   });
 
-  // Initialize map when dashboard loads
+  // Init Map if needed
   setTimeout(() => initializeMap(), 1500);
 
+  // --- MAP LOCATION PICKER ---
+  let locationPickerMap = null;
+  let pickerTarget = null; // 'auth' or 'edit'
+
+  window.openLocationPicker = function(target) {
+    pickerTarget = target;
+    const modal = document.getElementById('locationPickerModal');
+    if (!modal) return;
+    
+    modal.classList.remove('hidden');
+    
+    if (!locationPickerMap) {
+      // @ts-ignore
+      locationPickerMap = L.map('pickerMap').setView([12.2958, 76.6394], 13); // Default to Mysore
+      // @ts-ignore
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+      }).addTo(locationPickerMap);
+
+      let moveTimeout;
+      locationPickerMap.on('moveend', () => {
+        clearTimeout(moveTimeout);
+        moveTimeout = setTimeout(() => {
+          const center = locationPickerMap.getCenter();
+          const addressTxt = document.getElementById('pickerAddressText');
+          if (addressTxt) addressTxt.textContent = 'Fetching address...';
+          fetch(`https://nominatim.openstreetmap.org/reverse?lat=${center.lat}&lon=${center.lng}&format=json`)
+            .then(r => r.json())
+            .then(data => {
+              if (addressTxt) addressTxt.textContent = data.display_name || 'Unknown Location';
+            })
+            .catch(() => {
+              if (addressTxt) addressTxt.textContent = 'Unable to fetch address';
+            });
+        }, 500);
+      });
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          locationPickerMap.setView([pos.coords.latitude, pos.coords.longitude], 15);
+        });
+      }
+    }
+    
+    setTimeout(() => {
+      locationPickerMap.invalidateSize();
+    }, 100);
+  };
+
+  document.getElementById('closeLocationPicker')?.addEventListener('click', () => {
+    document.getElementById('locationPickerModal')?.classList.add('hidden');
+  });
+
+  document.getElementById('confirmLocationBtn')?.addEventListener('click', () => {
+    if (!locationPickerMap) return;
+    const center = locationPickerMap.getCenter();
+    const addressTxt = document.getElementById('pickerAddressText')?.textContent || '';
+    
+    const finalAddress = (addressTxt === 'Fetching address...' || addressTxt === 'Unable to fetch address' || addressTxt === 'Move map to detect address...') 
+      ? `${center.lat.toFixed(5)}, ${center.lng.toFixed(5)}` 
+      : addressTxt;
+    
+    if (pickerTarget === 'auth') {
+      // @ts-ignore
+      document.getElementById('authLocation').value = finalAddress;
+      // @ts-ignore
+      document.getElementById('authLat').value = center.lat;
+      // @ts-ignore
+      document.getElementById('authLon').value = center.lng;
+    } else if (pickerTarget === 'edit') {
+      // @ts-ignore
+      document.getElementById('editProfileLocation').value = finalAddress;
+      // @ts-ignore
+      document.getElementById('editLat').value = center.lat;
+      // @ts-ignore
+      document.getElementById('editLon').value = center.lng;
+    }
+    
+    document.getElementById('locationPickerModal')?.classList.add('hidden');
+  });
+  
   restoreSessionFromStorage();
 
 });
