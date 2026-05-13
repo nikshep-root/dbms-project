@@ -1034,6 +1034,26 @@ app.put('/api/ngo/:id/location', authenticateToken, async (req, res) => {
     }
 });
 
+// GET ALL LOCATIONS FOR MAP
+app.get('/api/nearby-restaurants', authenticateToken, async (req, res) => {
+    try {
+        const [restaurants] = await pool.query(`
+            SELECT restaurant_id, name, location, latitude, longitude
+            FROM Restaurant 
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        `);
+        const [ngos] = await pool.query(`
+            SELECT ngo_id, name, location, latitude, longitude
+            FROM NGO 
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        `);
+        res.json({ restaurants, ngos });
+    } catch (error) {
+        console.error('Map endpoint error:', error);
+        res.status(500).json({ error: 'Failed to load map data' });
+    }
+});
+
 // GET NEARBY RESTAURANTS - Find restaurants near an NGO
 app.get('/api/nearby/restaurants', authenticateToken, async (req, res) => {
     const { latitude, longitude, radius = 5 } = req.query;
