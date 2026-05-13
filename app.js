@@ -1219,82 +1219,92 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Open Auth Modal
   const openAuthModal = () => {
-    if (authModal && authModalInner) {
-      // Remember previously focused element
-      _lastFocusedElement = document.activeElement;
-      // Always start from a predictable role selection when auth modal opens.
-      setAuthRole('restaurant');
-      // expose modal to assistive tech
-      authModal.setAttribute('aria-hidden', 'false');
-      // hide background app content
-      document.getElementById('landingPage')?.setAttribute('aria-hidden', 'true');
-      document.getElementById('dashboardApp')?.setAttribute('aria-hidden', 'true');
-
-      // set toggles expanded
-      ['enterDashboardBtn','heroDashboardBtn','ctaDashboardBtn'].forEach(id => document.getElementById(id)?.setAttribute('aria-expanded','true'));
-
-      authModal.classList.remove('hidden');
-      // small delay for transition
-      setTimeout(() => {
-        authModal.classList.remove('opacity-0', 'pointer-events-none');
-        authModalInner.classList.remove('scale-95');
-        authModalInner.classList.add('scale-100');
-        // focus first input in modal
-        const first = authModal.querySelector('input,button,select,textarea,a[href]');
-        if (first && (first instanceof HTMLElement)) first.focus();
-
-        // install key handler to trap focus and close on Escape
-        _authKeyHandler = (ev) => {
-          if (ev.key === 'Escape') {
-            ev.preventDefault();
-            closeAuthModal();
-            return;
-          }
-          if (ev.key === 'Tab') {
-            const focusable = Array.from(authModal.querySelectorAll('input,button,select,textarea,a[href]'))
-              .filter((el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true')
-              .map(el => /** @type {HTMLElement} */ (el));
-            if (focusable.length === 0) return;
-            const firstEl = focusable[0];
-            const lastEl = focusable[focusable.length - 1];
-            if (ev.shiftKey) {
-              if (document.activeElement === firstEl) { ev.preventDefault(); lastEl.focus(); }
-            } else {
-              if (document.activeElement === lastEl) { ev.preventDefault(); firstEl.focus(); }
-            }
-          }
-        };
-        document.addEventListener('keydown', _authKeyHandler);
-      }, 10);
+    console.log('Opening auth modal...', { authModal, authModalInner });
+    const modal = $('authModal');
+    const modalInner = $('authModalInner');
+    
+    if (!modal || !modalInner) {
+      console.error('Auth modal elements not found!');
+      return;
     }
+    
+    // Remember previously focused element
+    _lastFocusedElement = document.activeElement;
+    // Always start from a predictable role selection when auth modal opens.
+    setAuthRole('restaurant');
+    // expose modal to assistive tech
+    modal.setAttribute('aria-hidden', 'false');
+    // hide background app content
+    document.getElementById('landingPage')?.setAttribute('aria-hidden', 'true');
+    document.getElementById('dashboardApp')?.setAttribute('aria-hidden', 'true');
+
+    // set toggles expanded
+    ['enterDashboardBtn','heroDashboardBtn','ctaDashboardBtn'].forEach(id => document.getElementById(id)?.setAttribute('aria-expanded','true'));
+
+    modal.classList.remove('hidden');
+    // small delay for transition
+    setTimeout(() => {
+      modal.classList.remove('opacity-0', 'pointer-events-none');
+      modalInner.classList.remove('scale-95');
+      modalInner.classList.add('scale-100');
+      // focus first input in modal
+      const first = modal.querySelector('input,button,select,textarea,a[href]');
+      if (first && (first instanceof HTMLElement)) first.focus();
+
+      // install key handler to trap focus and close on Escape
+      _authKeyHandler = (ev) => {
+        if (ev.key === 'Escape') {
+          ev.preventDefault();
+          closeAuthModal();
+          return;
+        }
+        if (ev.key === 'Tab') {
+          const focusable = Array.from(modal.querySelectorAll('input,button,select,textarea,a[href]'))
+            .filter((el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true')
+            .map(el => /** @type {HTMLElement} */ (el));
+          if (focusable.length === 0) return;
+          const firstEl = focusable[0];
+          const lastEl = focusable[focusable.length - 1];
+          if (ev.shiftKey) {
+            if (document.activeElement === firstEl) { ev.preventDefault(); lastEl.focus(); }
+          } else {
+            if (document.activeElement === lastEl) { ev.preventDefault(); firstEl.focus(); }
+          }
+        }
+      };
+      document.addEventListener('keydown', _authKeyHandler);
+    }, 10);
   };
 
   // Close Auth Modal
   const closeAuthModal = () => {
-    if (authModal && authModalInner) {
-      authModal.classList.add('opacity-0', 'pointer-events-none');
-      authModalInner.classList.remove('scale-100');
-      authModalInner.classList.add('scale-95');
+    const modal = $('authModal');
+    const modalInner = $('authModalInner');
+    
+    if (!modal || !modalInner) return;
+    
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    modalInner.classList.remove('scale-100');
+    modalInner.classList.add('scale-95');
 
-      // hide to assistive tech
-      authModal.setAttribute('aria-hidden', 'true');
-      document.getElementById('landingPage')?.setAttribute('aria-hidden', 'false');
-      document.getElementById('dashboardApp')?.setAttribute('aria-hidden', 'false');
+    // hide to assistive tech
+    modal.setAttribute('aria-hidden', 'true');
+    document.getElementById('landingPage')?.setAttribute('aria-hidden', 'false');
+    document.getElementById('dashboardApp')?.setAttribute('aria-hidden', 'false');
 
-      // reset toggles
-      ['enterDashboardBtn','heroDashboardBtn','ctaDashboardBtn'].forEach(id => document.getElementById(id)?.setAttribute('aria-expanded','false'));
+    // reset toggles
+    ['enterDashboardBtn','heroDashboardBtn','ctaDashboardBtn'].forEach(id => document.getElementById(id)?.setAttribute('aria-expanded','false'));
 
-      // remove key handler
-      if (_authKeyHandler) document.removeEventListener('keydown', _authKeyHandler);
-      _authKeyHandler = null;
+    // remove key handler
+    if (_authKeyHandler) document.removeEventListener('keydown', _authKeyHandler);
+    _authKeyHandler = null;
 
-      setTimeout(() => {
-        authModal.classList.add('hidden');
-        // restore focus
-        try { if (_lastFocusedElement && (/** @type {HTMLElement} */ (_lastFocusedElement)).focus) (/** @type {HTMLElement} */ (_lastFocusedElement)).focus(); } catch (e) { }
-        _lastFocusedElement = null;
-      }, 300);
-    }
+    setTimeout(() => {
+      modal.classList.add('hidden');
+      // restore focus
+      try { if (_lastFocusedElement && (/** @type {HTMLElement} */ (_lastFocusedElement)).focus) (/** @type {HTMLElement} */ (_lastFocusedElement)).focus(); } catch (e) { }
+      _lastFocusedElement = null;
+    }, 300);
   };
 
   $('closeAuthModal')?.addEventListener('click', (e) => {
