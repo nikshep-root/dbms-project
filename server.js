@@ -363,7 +363,7 @@ app.post('/api/food-listings', authenticateToken, async (req, res) => {
         );
 
         // Send confirmation email to restaurant
-        const [restaurantData] = await pool.query(`SELECT email, restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [req.user.id]);
+        const [restaurantData] = await pool.query(`SELECT email, name AS restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [req.user.id]);
         if (restaurantData.length > 0) {
             const restaurant = restaurantData[0];
             emailService.sendFoodListingConfirmationEmail(
@@ -441,8 +441,8 @@ app.post('/api/requests', authenticateToken, async (req, res) => {
         );
 
         // Send notification email to restaurant
-        const [restaurantData] = await pool.query(`SELECT email, restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [foodData[0].restaurant_id]);
-        const [ngoData] = await pool.query(`SELECT ngo_name FROM NGO WHERE ngo_id = ?`, [req.user.id]);
+        const [restaurantData] = await pool.query(`SELECT email, name AS restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [foodData[0].restaurant_id]);
+        const [ngoData] = await pool.query(`SELECT name AS ngo_name FROM NGO WHERE ngo_id = ?`, [req.user.id]);
         
         if (restaurantData.length > 0 && ngoData.length > 0) {
             emailService.sendNewRequestNotificationEmail(
@@ -548,8 +548,8 @@ app.patch('/api/requests/:requestId/decision', authenticateToken, async (req, re
         }
 
         // Get NGO and restaurant details for email
-        const [ngoData] = await conn.query(`SELECT email, ngo_name FROM NGO WHERE ngo_id = ?`, [requestRow.ngo_id]);
-        const [restaurantData] = await conn.query(`SELECT restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [requestRow.restaurant_id]);
+        const [ngoData] = await conn.query(`SELECT email, name AS ngo_name FROM NGO WHERE ngo_id = ?`, [requestRow.ngo_id]);
+        const [restaurantData] = await conn.query(`SELECT name AS restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [requestRow.restaurant_id]);
 
         if (action === 'approve') {
             await conn.query(`UPDATE Request SET status = 'approved' WHERE request_id = ?`, [requestId]);
@@ -687,8 +687,8 @@ app.patch('/api/deliveries/:deliveryId/status', authenticateToken, async (req, r
 
         // Send delivery status update email
         if (['in transit', 'delivered'].includes(statusLower)) {
-            const [ngoData] = await pool.query(`SELECT email, ngo_name FROM NGO WHERE ngo_id = ?`, [rows[0].ngo_id]);
-            const [restaurantData] = await pool.query(`SELECT restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [rows[0].restaurant_id]);
+            const [ngoData] = await pool.query(`SELECT email, name AS ngo_name FROM NGO WHERE ngo_id = ?`, [rows[0].ngo_id]);
+            const [restaurantData] = await pool.query(`SELECT name AS restaurant_name FROM Restaurant WHERE restaurant_id = ?`, [rows[0].restaurant_id]);
             
             if (ngoData.length > 0) {
                 const ngo = ngoData[0];
@@ -890,7 +890,7 @@ app.get('/api/audit-logs', authenticateToken, async (req, res) => {
             params.push(table);
         }
 
-        query += ' ORDER BY changed_at DESC LIMIT ? OFFSET ?';
+        query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
         params.push(limit, offset);
 
         const [logs] = await pool.query(query, params);
