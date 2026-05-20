@@ -151,6 +151,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (id === 'dashboard') {
       animateCounters();
       startDashboardRealtime();
+      if (typeof foodbridgeMap !== 'undefined' && foodbridgeMap) {
+        setTimeout(() => foodbridgeMap.invalidateSize(), 150);
+      }
     } else {
       stopDashboardRealtime();
     }
