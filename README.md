@@ -103,9 +103,9 @@ To create a transparent, efficient, and scalable food distribution network that:
 ### For NGOs (Food Receivers)
 
 #### Account Management
-- Register with NGO name, location, contact, and email
-- Secure login and profile management
-- View donation statistics and impact metrics
+- Register with NGO name, location, contact, and email.
+- Secure login and profile management.
+- View donation statistics and impact metrics.
 
 #### Food Browsing & Requests
 - **Browse Listings**: Search and filter available food items
