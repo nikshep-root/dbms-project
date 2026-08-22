@@ -17,6 +17,216 @@ app.use(express.static(__dirname)); // Serve static files like index.html and im
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_foodbridge_key_2026';
 
+const localDbConfig = {
+    host: 'localhost',
+    user: 'foodbridge',
+    password: 'foodbridge123',
+    database: 'foodbridge',
+    port: 3306,
+    ssl: false
+};
+
+function getPoolConfig() {
+    return {
+        host: process.env.DB_HOST || localDbConfig.host,
+        user: process.env.DB_USER || localDbConfig.user,
+        password: process.env.DB_PASSWORD ?? localDbConfig.password,
+        database: process.env.DB_NAME || localDbConfig.database,
+        port: Number(process.env.DB_PORT || localDbConfig.port),
+        ssl: false,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0
+    };
+}
+
+async function testConnection(config) {
+    const tempPool = mysql.createPool({ ...config, connectionLimit: 1, queueLimit: 0 });
+    try {
+        await tempPool.query('SELECT 1');
+        return true;
+    } catch (error) {
+        return false;
+    } finally {
+        await tempPool.end();
+    }
+}
+
+async function ensureDatabaseSchema() {
+    const schemaStatements = [
+        `CREATE TABLE IF NOT EXISTS Restaurant (
+            restaurant_id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(150) NOT NULL,
+            location VARCHAR(300) NOT NULL,
+            contact VARCHAR(15) NOT NULL,
+            email VARCHAR(100) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            latitude DECIMAL(10, 8) DEFAULT NULL,
+            longitude DECIMAL(11, 8) DEFAULT NULL,
+            address_geocoded VARCHAR(255) DEFAULT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS NGO (
+            ngo_id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(150) NOT NULL,
+            location VARCHAR(300) NOT NULL,
+            contact VARCHAR(15) NOT NULL,
+            email VARCHAR(100) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            latitude DECIMAL(10, 8) DEFAULT NULL,
+            longitude DECIMAL(11, 8) DEFAULT NULL,
+            address_geocoded VARCHAR(255) DEFAULT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS Food_Listing (
+            listing_id INT AUTO_INCREMENT PRIMARY KEY,
+            restaurant_id INT NOT NULL,
+            food_type VARCHAR(200) NOT NULL,
+            quantity VARCHAR(50) NOT NULL,
+            pickup_by DATETIME NOT NULL,
+            status ENUM('available','requested','allocated','expired') DEFAULT 'available',
+            category VARCHAR(50) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (restaurant_id) REFERENCES Restaurant(restaurant_id) ON DELETE CASCADE
+        )`,
+        `CREATE TABLE IF NOT EXISTS Request (
+            request_id INT AUTO_INCREMENT PRIMARY KEY,
+            listing_id INT NOT NULL,
+            ngo_id INT NOT NULL,
+            status ENUM('pending','approved','rejected') DEFAULT 'pending',
+            remarks TEXT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (listing_id) REFERENCES Food_Listing(listing_id) ON DELETE CASCADE,
+            FOREIGN KEY (ngo_id) REFERENCES NGO(ngo_id) ON DELETE CASCADE
+        )`,
+        `CREATE TABLE IF NOT EXISTS Delivery (
+            delivery_id INT AUTO_INCREMENT PRIMARY KEY,
+            request_id INT NOT NULL UNIQUE,
+            status ENUM('pending','in transit','delivered','cancelled') DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            delivery_agent VARCHAR(100) DEFAULT NULL,
+            agent_phone VARCHAR(15) DEFAULT NULL,
+            FOREIGN KEY (request_id) REFERENCES Request(request_id) ON DELETE CASCADE
+        )`,
+        `CREATE TABLE IF NOT EXISTS Review (
+            review_id INT AUTO_INCREMENT PRIMARY KEY,
+            ngo_id INT NOT NULL,
+            restaurant_id INT NOT NULL,
+            rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_review (ngo_id, restaurant_id),
+            FOREIGN KEY (ngo_id) REFERENCES NGO(ngo_id) ON DELETE CASCADE,
+            FOREIGN KEY (restaurant_id) REFERENCES Restaurant(restaurant_id) ON DELETE CASCADE
+        )`,
+        `CREATE TABLE IF NOT EXISTS Audit_Log (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            table_name VARCHAR(64) NOT NULL,
+            row_id INT,
+            action VARCHAR(16) NOT NULL,
+            changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            who VARCHAR(100) DEFAULT NULL,
+            payload JSON DEFAULT NULL
+        )`,
+        `CREATE TABLE IF NOT EXISTS Geolocation_Cache (
+            cache_id INT AUTO_INCREMENT PRIMARY KEY,
+            address VARCHAR(500) UNIQUE NOT NULL,
+            latitude DECIMAL(10, 8) NOT NULL,
+            longitude DECIMAL(11, 8) NOT NULL,
+            cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS Location_History (
+            location_id INT AUTO_INCREMENT PRIMARY KEY,
+            delivery_id INT NOT NULL,
+            latitude DECIMAL(10, 8) NOT NULL,
+            longitude DECIMAL(11, 8) NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (delivery_id) REFERENCES Delivery(delivery_id) ON DELETE CASCADE
+        )`
+    ];
+
+    for (const statement of schemaStatements) {
+        await pool.query(statement);
+    }
+
+    const [[{ restaurantCount }]] = await pool.query('SELECT COUNT(*) AS restaurantCount FROM Restaurant');
+    const [[{ ngoCount }]] = await pool.query('SELECT COUNT(*) AS ngoCount FROM NGO');
+
+    if (restaurantCount === 0) {
+        const passwordHash = await bcrypt.hash('pass123', 10);
+        const sampleRestaurant = [
+            ['Raj\'s Kitchen', 'Koramangala, Bangalore', '9876543210', 'raj@kitchen.com', passwordHash],
+            ['Baker\'s Delight', 'Indiranagar, Bangalore', '9876543211', 'baker@delight.com', passwordHash],
+            ['Spice Garden', 'HSR Layout, Bangalore', '9876543212', 'spice@garden.com', passwordHash],
+            ['Green Bowl', 'Whitefield, Bangalore', '9876543213', 'green@bowl.com', passwordHash]
+        ];
+        await pool.query(
+            'INSERT INTO Restaurant (name, location, contact, email, password) VALUES ?', [sampleRestaurant]
+        );
+    }
+
+    if (ngoCount === 0) {
+        const passwordHash = await bcrypt.hash('pass123', 10);
+        const sampleNgo = [
+            ['Hope Foundation', 'Jayanagar, Bangalore', '9876543220', 'hope@foundation.org', passwordHash],
+            ['Feed India', 'Rajajinagar, Bangalore', '9876543221', 'feed@india.org', passwordHash],
+            ['Annapurna NGO', 'BTM Layout, Bangalore', '9876543222', 'anna@purna.org', passwordHash]
+        ];
+        await pool.query(
+            'INSERT INTO NGO (name, location, contact, email, password) VALUES ?', [sampleNgo]
+        );
+    }
+}
+
+async function initializeDatabase() {
+    const primaryConfig = getPoolConfig();
+    const localConfig = { ...localDbConfig, database: 'foodbridge' };
+    const mysqlConfig = { ...localDbConfig, database: 'mysql' };
+
+    let activeConfig = primaryConfig;
+
+    if (!(await testConnection(primaryConfig))) {
+        console.warn('Configured database is unreachable. Falling back to local MySQL.');
+        activeConfig = localConfig;
+    }
+
+    if (activeConfig.database !== 'foodbridge') {
+        const adminPool = mysql.createPool(mysqlConfig);
+        try {
+            await adminPool.query('CREATE DATABASE IF NOT EXISTS foodbridge');
+        } finally {
+            await adminPool.end();
+        }
+        activeConfig = localConfig;
+    }
+
+    global.__foodbridgePoolConfig = activeConfig;
+    pool = mysql.createPool({
+        ...activeConfig,
+        ssl: false,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0
+    });
+
+    try {
+        await pool.query('SELECT 1');
+        await ensureDatabaseSchema();
+        console.log('Database ready:', activeConfig.host, activeConfig.database);
+    } catch (error) {
+        console.error('Database initialization failed:', error.message);
+    }
+}
+
+console.log('Environment variables loaded:');
+console.log('DB_HOST:', process.env.DB_HOST || 'localhost');
+console.log('DB_USER:', process.env.DB_USER || 'root');
+console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'NOT SET');
+console.log('DB_NAME:', process.env.DB_NAME || 'foodbridge');
+console.log('DB_PORT:', process.env.DB_PORT || 3306);
+
+// Create MySQL connection pool
+let pool = mysql.createPool(getPoolConfig());
+
 // Keep database awake on free tier
 setInterval(async () => {
     try {
@@ -29,29 +239,20 @@ setInterval(async () => {
     }
 }, 4 * 60 * 1000); // Every 4 minutes (before the 30-min timeout)
 
-console.log('Environment variables loaded:');
-console.log('DB_HOST:', process.env.DB_HOST);
-console.log('DB_USER:', process.env.DB_USER);
-console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : 'NOT SET');
-console.log('DB_NAME:', process.env.DB_NAME);
-console.log('DB_PORT:', process.env.DB_PORT);
-
-// Create MySQL connection pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'foodbridge',
-    port: process.env.DB_PORT || 3306,
-    ssl: process.env.DB_HOST && process.env.DB_HOST !== 'localhost'
-        ? { rejectUnauthorized: false }
-        : false,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
+initializeDatabase();
 
 // Middleware to verify JWT token
+const verifyPassword = async (inputPassword, storedPassword) => {
+    if (!storedPassword) return false;
+    if (storedPassword === inputPassword) return true;
+
+    try {
+        return await bcrypt.compare(inputPassword, storedPassword);
+    } catch (error) {
+        return false;
+    }
+};
+
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -71,7 +272,7 @@ const authenticateToken = (req, res, next) => {
 
 // REGISTRATION
 app.post('/api/auth/register', async (req, res) => {
-    const { role, name, location, contact, email, password, extraInfo } = req.body;
+    const { role, name, location, contact, email, password, latitude, longitude } = req.body;
 
     try {
         if (!['restaurant', 'ngo'].includes(role)) {
@@ -95,17 +296,25 @@ app.post('/api/auth/register', async (req, res) => {
         const query = `INSERT INTO ${table} (name, location, contact, email, password) VALUES (?, ?, ?, ?, ?)`;
         const [result] = await pool.query(query, [name.trim(), location.trim(), contact.trim(), email.trim(), hashedPassword]);
 
-        // Automatically geocode their location in the background
+        // Automatically geocode their location in the background if coordinates are missing
         const insertId = result.insertId;
         const idColumn = role === 'restaurant' ? 'restaurant_id' : 'ngo_id';
-        geolocationService.geocodeAddress(location.trim())
-            .then(async (coords) => {
-                await pool.query(
-                    `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
-                    [coords.latitude, coords.longitude, insertId]
-                );
-            })
-            .catch(err => console.error(`Background geocoding failed for new ${role}:`, err.message));
+        
+        if (latitude && longitude) {
+            await pool.query(
+                `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
+                [latitude, longitude, insertId]
+            );
+        } else {
+            geolocationService.geocodeAddress(location.trim())
+                .then(async (coords) => {
+                    await pool.query(
+                        `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
+                        [coords.latitude, coords.longitude, insertId]
+                    );
+                })
+                .catch(err => console.error(`Background geocoding failed for new ${role}:`, err.message));
+        }
 
         const token = jwt.sign(
             { id: result.insertId, role, name: name.trim() },
@@ -155,7 +364,7 @@ app.post('/api/auth/login', async (req, res) => {
 
         let matched = null;
         for (const candidate of candidates) {
-            const valid = await bcrypt.compare(password, candidate.user.password);
+            const valid = await verifyPassword(password, candidate.user.password);
             if (valid) {
                 matched = candidate;
                 break;
@@ -242,7 +451,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 app.put('/api/profile', authenticateToken, async (req, res) => {
     try {
         const { id, role } = req.user;
-        const { name, email, location, contact } = req.body;
+        const { name, email, location, contact, latitude, longitude } = req.body;
 
         if (!name || !email || !location || !contact) {
             return res.status(400).json({ error: 'All profile fields are required.' });
@@ -271,15 +480,22 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
             [name.trim(), email.trim(), location.trim(), contact.trim(), id]
         );
 
-        // Automatically geocode the new location in the background
-        geolocationService.geocodeAddress(location.trim())
-            .then(async (coords) => {
-                await pool.query(
-                    `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
-                    [coords.latitude, coords.longitude, id]
-                );
-            })
-            .catch(err => console.error('Background geocoding failed for profile update:', err.message));
+        // Update coordinates if explicitly provided, else auto-geocode
+        if (latitude && longitude) {
+            await pool.query(
+                `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
+                [latitude, longitude, id]
+            );
+        } else {
+            geolocationService.geocodeAddress(location.trim())
+                .then(async (coords) => {
+                    await pool.query(
+                        `UPDATE ${table} SET latitude = ?, longitude = ? WHERE ${idColumn} = ?`,
+                        [coords.latitude, coords.longitude, id]
+                    );
+                })
+                .catch(err => console.error('Background geocoding failed for profile update:', err.message));
+        }
 
         res.json({
             message: 'Profile updated successfully',
